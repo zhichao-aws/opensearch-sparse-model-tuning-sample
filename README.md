@@ -1,3 +1,7 @@
+> **Note:** This sample works with OpenSearch Project. We encourage you to join the [public Slack](https://opensearch.org/slack.html) for questions.
+
+# Process of fine-tuning neural-sparse model on customized dataset
+
 ## Prepare the environment
 
 ### Conda environment
@@ -18,14 +22,14 @@ To evaluate search relevance or mine hard negatives, run an OpenSearch node at l
 4. The sevice is running. Run `curl -X GET http://localhost:9200` to test.
 
 ### An example of fine-tuning on BEIR scifact
-Here is an example of fine-tuning the `opensearch-project/opensearch-neural-sparse-encoding-doc-v2-mini` model at BEIR scifact.
+Here is an example of fine-tuning the `opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill` model at BEIR scifact.
 
 1. Generate training data.
    1. `python demo_train_data.py`(data parallel) or `torchrun --nproc_per_node=${N_DEVICES} demo_train_data.py`(distributed data parallel) with configs.
-   2. This will generate training data of hard negatives at `data/scifact_train.jsonl`
+   2. This will generate training data of hard negatives at `data/scifact_train`
 ```
 torchrun --nproc_per_node=${N_DEVICES} demo_train_data.py \
-  --model_name_or_path opensearch-project/opensearch-neural-sparse-encoding-doc-v2-mini \
+  --model_name_or_path opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill \
   --inf_free true \
   --idf_path idf.json \
   --beir_dir data/beir \
@@ -52,7 +56,7 @@ done
 ```
 
 ## Run with infoNCE loss
-Training with infoNCE loss. It pushes the model generates higher scores for the positive pairs than all other pairs. The training mode should be `infonce`.
+Training with infoNCE loss. It pushes the model generates higher scores for the positive pairs than all other pairs.
 
 ```
 python train_ir.py config_infonce.yaml
@@ -64,7 +68,7 @@ N_DEVICES=8
 torchrun --nproc_per_node=${N_DEVICES} train_ir.py config_infonce.yaml
 ```
 
-Data file is a jsonl file, each line is a data sample like this:
+Data file is a datasets.Dataset, each sample is an object like this:
 ```json
 {
     "query":"xxx xxx xxx",
@@ -74,7 +78,7 @@ Data file is a jsonl file, each line is a data sample like this:
 ```
 
 ## Run with knowledge distillation (ensemble teachers)
-To ensemble dense and sparse teachers to generate superversary signals for knowledge distillation. The training_mode should be `kd-ensemble`. The superverary signals are generated dynamically during training.
+To ensemble dense and sparse teachers to generate superversary signals for knowledge distillation. The superverary signals are generated dynamically during training.
 
 Run with data parallel:
 ```
@@ -90,9 +94,9 @@ torchrun --nproc_per_node=${N_DEVICES} train_ir.py config_kd.yaml
 The data file has the same format as training with infoNCE.
 
 ## Run with knowledge distillation (scores pre-computed)
-For expensive teacher models like LLM or cross-encoders, we can calculate the scores in advance and store the scores. To run with pre-computed KD scores, The training_mode should be `kd`.
+For expensive teacher models like LLM or cross-encoders, we can calculate the scores in advance and store the scores. To run with pre-computed KD scores, use_in_batch_negatives should be set to false.
 
-Data file is a jsonl file, each line is a data sample like this:
+Data file is a datasets.Dataset, each sample is an object like this:
 ```json
 {
     "query":"xxx xxx xxx",
@@ -100,3 +104,20 @@ Data file is a jsonl file, each line is a data sample like this:
     "scores": [1.0, 5.0, 9.0, 4.4]
 }
 ```
+
+## Related read
+[Towards Competitive Search Relevance For Inference-Free Learned Sparse Retrievers](https://arxiv.org/abs/2411.04403)
+```
+@misc{geng2024competitivesearchrelevanceinferencefree,
+      title={Towards Competitive Search Relevance For Inference-Free Learned Sparse Retrievers}, 
+      author={Zhichao Geng and Dongyu Ru and Yang Yang},
+      year={2024},
+      eprint={2411.04403},
+      archivePrefix={arXiv},
+      primaryClass={cs.IR},
+      url={https://arxiv.org/abs/2411.04403}, 
+}
+```
+
+## COPYRIGHT
+Copyright opensearch-sparse-model-tuning-sample Contributors.
