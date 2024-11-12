@@ -98,7 +98,7 @@ def main():
         )
     elif data_args.train_file_dir is not None:
         dataset = load_datasets(
-            path=data_args.train_file,
+            path=data_args.train_file_dir,
             cls=data_args.data_type,
             training_args=training_args,
             shuffle=False,
