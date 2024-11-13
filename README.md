@@ -19,7 +19,7 @@ To evaluate search relevance or mine hard negatives, run an OpenSearch node at l
 1. Follow the step1 and step2 in above documentation.
 2. Modify `/path/to/opensearch-2.16.0/config/opensearch.yml`, add this line: `plugins.security.disabled: true`
 3. Start a tmux session so the OpenSearch won't stop after the terminal is close `tmux new -s opensearch`. In the tmux session, run `cd /path/to/opensearch-2.16.0` and `./bin/opensearch`.
-4. The sevice is running. Run `curl -X GET http://localhost:9200` to test.
+4. The service is running. Run `curl -X GET http://localhost:9200` to test.
 
 ### An example of fine-tuning on BEIR scifact
 Here is an example of fine-tuning the `opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill` model at BEIR scifact.
@@ -38,7 +38,7 @@ torchrun --nproc_per_node=${N_DEVICES} demo_train_data.py \
 2. Run training.
    1. `python train_ir.py {config_file}`(data parallel) or `torchrun --nproc_per_node=${N_DEVICES} train_ir.py config.yaml`(distributed data parallel)
    2. If training using infoNCE loss, use config_infonce.yaml
-   3. If training using ensembled teacher models, using config_kd.yaml
+   3. If training using ensemble teacher models, using config_kd.yaml
 3. Run evaluation on the test set.
 ```
 for step in {500,1000,1500,2000}
@@ -78,7 +78,7 @@ Data file is a datasets.Dataset, each sample is an object like this:
 ```
 
 ## Run with knowledge distillation (ensemble teachers)
-To ensemble dense and sparse teachers to generate superversary signals for knowledge distillation. The superverary signals are generated dynamically during training.
+To ensemble dense and sparse teachers to generate supervisory signals for knowledge distillation. The supervisory signals are generated dynamically during training.
 
 Run with data parallel:
 ```
