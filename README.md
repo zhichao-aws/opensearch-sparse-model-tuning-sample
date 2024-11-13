@@ -68,7 +68,7 @@ N_DEVICES=8
 torchrun --nproc_per_node=${N_DEVICES} train_ir.py config_infonce.yaml
 ```
 
-Data file is a dataset. Dataset, each sample is an object like this:
+Data file is a datasets.Dataset, each sample is an object like this:
 ```json
 {
     "query":"xxx xxx xxx",
@@ -96,7 +96,7 @@ The data file has the same format as training with infoNCE.
 ## Run with knowledge distillation (scores pre-computed)
 For expensive teacher models like LLM or cross-encoders, we can calculate the scores in advance and store the scores. To run with pre-computed KD scores, use_in_batch_negatives should be set to false.
 
-Data file is a dataset. Dataset, each sample is an object like this:
+Data file is a datasets.Dataset, each sample is an object like this:
 ```json
 {
     "query":"xxx xxx xxx",
