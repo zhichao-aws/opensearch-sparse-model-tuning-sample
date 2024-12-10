@@ -50,27 +50,83 @@ class ModelWrapper(torch.nn.Module):
 
 
 class SparseModelTrainer(Trainer):
+
     def __init__(self, model_args, data_args, loss_functions, **kwargs):
         self.model_args = model_args
         self.data_args = data_args
         self.loss_functions = loss_functions
         self.ranking_loss_moving_avg = 0
+        self._threshold_handlers = {
+            "concurrent": self._concurrent_threshold,
+            "nonzero_mean": self._nonzero_mean_threshold,
+            "detach_zero": self._detach_zero_threshold,
+        }
         kwargs["model"] = ModelWrapper(kwargs["model"], model_args.inf_free)
         super().__init__(**kwargs)
 
-    def flops_value(self, representation, group_num=1):
-        # representation size: (ndevice * batch_size) * vocab_dim
-        # group num: how many semantic similar documents representations in one batch
+    def flops_value(
+        self, representation: torch.Tensor, group_num: int = 1
+    ) -> torch.Tensor:
+        """Calculate FLOPS value based on representation and threshold settings.
+
+        Args:
+            representation: Input tensor of shape (ndevice * batch_size) * vocab_dim
+            group_num: Number of semantic similar documents representations in one batch
+
+        Returns:
+            torch.Tensor: Calculated FLOPS value
+        """
         representation = representation.reshape(-1, group_num, representation.shape[-1])
+
         if self.data_args.flops_threshold is None:
             return torch.sum(torch.mean(torch.abs(representation), dim=0) ** 2)
-        else:
-            w_j_per_doc = torch.abs(representation)  # N, vocab_dim
-            doc_length = torch.norm(w_j_per_doc, p=0, dim=2)  # N
-            mask = (doc_length > self.data_args.flops_threshold).float()  # N
-            mask = mask.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])  # N, vocab_dim
-            flops_per_average_token = torch.mean(mask * w_j_per_doc, dim=0) ** 2
-            return torch.sum(flops_per_average_token)
+
+        handler = self._threshold_handlers.get(self.data_args.threshold_type)
+        if not handler:
+            raise ValueError(
+                f"Invalid flops threshold type: {self.data_args.threshold_type}"
+            )
+
+        return handler(representation)
+
+    def _get_doc_mask(self, representation: torch.Tensor) -> torch.Tensor:
+        """Calculate document mask based on threshold."""
+        w_j_per_doc = torch.abs(representation)
+        doc_length = torch.norm(w_j_per_doc, p=0, dim=2)
+        return (doc_length > self.data_args.flops_threshold).float()
+
+    def _concurrent_threshold(self, representation: torch.Tensor) -> torch.Tensor:
+        """Handle concurrent threshold type."""
+        w_j_per_doc = torch.abs(representation)
+        mask = self._get_doc_mask(representation)
+        mask = mask.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])
+        flops_per_average_token = torch.mean(mask * w_j_per_doc, dim=0) ** 2
+        return torch.sum(flops_per_average_token)
+
+    def _nonzero_mean_threshold(self, representation: torch.Tensor) -> torch.Tensor:
+        """Handle nonzero_mean threshold type."""
+        w_j_per_doc = torch.abs(representation)
+        mask = self._get_doc_mask(representation)
+        index = torch.nonzero(mask).squeeze(1)
+
+        if index.numel() == 0:
+            return torch.tensor(0.0)
+
+        flops_per_average_token = torch.mean(w_j_per_doc[index], dim=0) ** 2
+        return torch.sum(flops_per_average_token)
+
+    def _detach_zero_threshold(self, representation: torch.Tensor) -> torch.Tensor:
+        """Handle detach_zero threshold type."""
+        w_j_per_doc = torch.abs(representation)
+        mask = self._get_doc_mask(representation)
+        index = torch.nonzero(mask).squeeze(1)
+
+        if index.numel() == 0:
+            return torch.tensor(0.0)
+
+        w_j_per_doc[index] = w_j_per_doc[index].detach()
+        flops_per_average_token = torch.mean(w_j_per_doc[index], dim=0) ** 2
+        return torch.sum(flops_per_average_token)
 
     def get_lambda(self, lambda_value, lambda_T):
         if self.state.global_step >= lambda_T:
