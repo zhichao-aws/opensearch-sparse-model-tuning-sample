@@ -28,6 +28,7 @@ class DataTrainingArguments:
     use_in_batch_negatives: bool = field(default=False)
     flops_d_lambda: float = field(default=1e-3)
     flops_d_T: float = field(default=10000)
+    flops_threshold: float = field(default=200)
     flops_q_lambda: float = field(default=None)
     flops_q_T: float = field(default=None)
     ranking_loss_weight: float = field(default=1)

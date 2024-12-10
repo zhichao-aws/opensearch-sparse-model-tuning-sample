@@ -62,7 +62,15 @@ class SparseModelTrainer(Trainer):
         # representation size: (ndevice * batch_size) * vocab_dim
         # group num: how many semantic similar documents representations in one batch
         representation = representation.reshape(-1, group_num, representation.shape[-1])
-        return torch.sum(torch.mean(torch.abs(representation), dim=0) ** 2)
+        if self.data_args.flops_threshold is None:
+            return torch.sum(torch.mean(torch.abs(representation), dim=0) ** 2)
+        else:
+            w_j_per_doc = torch.abs(representation)  # N, vocab_dim
+            doc_length = torch.norm(w_j_per_doc, p=0, dim=2)  # N
+            mask = (doc_length > self.data_args.flops_threshold).float()  # N
+            mask = mask.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])  # N, vocab_dim
+            flops_per_average_token = torch.mean(mask * w_j_per_doc, dim=0) ** 2
+            return torch.sum(flops_per_average_token)
 
     def get_lambda(self, lambda_value, lambda_T):
         if self.state.global_step >= lambda_T:
