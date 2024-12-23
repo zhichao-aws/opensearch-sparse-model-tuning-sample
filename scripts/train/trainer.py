@@ -95,12 +95,23 @@ class SparseModelTrainer(Trainer):
         doc_length = torch.norm(w_j_per_doc, p=0, dim=2)
         return (doc_length > self.data_args.flops_threshold).float()
 
+    def _get_doc_ratio(self, representation: torch.Tensor) -> torch.Tensor:
+        """Calculate document ratio based on threshold."""
+        w_j_per_doc = torch.abs(representation)
+        doc_length = torch.norm(w_j_per_doc, p=0, dim=2)
+        return doc_length / self.data_args.flops_threshold
+
     def _concurrent_threshold(self, representation: torch.Tensor) -> torch.Tensor:
         """Handle concurrent threshold type."""
         w_j_per_doc = torch.abs(representation)
-        mask = self._get_doc_mask(representation)
-        mask = mask.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])
-        flops_per_average_token = torch.mean(mask * w_j_per_doc, dim=0) ** 2
+        if self.data_args.threshold_mode == "ratio":
+            ratio = self._get_doc_ratio(representation)
+            ratio = ratio.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])
+            flops_per_average_token = torch.mean(ratio * w_j_per_doc, dim=0) ** 2
+        else: 
+            mask = self._get_doc_mask(representation)
+            mask = mask.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])
+            flops_per_average_token = torch.mean(mask * w_j_per_doc, dim=0) ** 2
         return torch.sum(flops_per_average_token)
 
     def _nonzero_mean_threshold(self, representation: torch.Tensor) -> torch.Tensor:

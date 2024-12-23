@@ -30,6 +30,7 @@ class DataTrainingArguments:
     flops_d_T: float = field(default=10000)
     flops_threshold: float = field(default=200)
     threshold_type: str = field(default="concurrent")
+    threshold_mode: str = field(default="ratio")
     flops_q_lambda: float = field(default=None)
     flops_q_T: float = field(default=None)
     ranking_loss_weight: float = field(default=1)
