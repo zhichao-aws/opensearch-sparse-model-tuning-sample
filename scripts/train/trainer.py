@@ -108,7 +108,7 @@ class SparseModelTrainer(Trainer):
             ratio = self._get_doc_ratio(representation)
             ratio = ratio.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])
             flops_per_average_token = torch.mean(ratio * w_j_per_doc, dim=0) ** 2
-        else: 
+        else:
             mask = self._get_doc_mask(representation)
             mask = mask.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])
             flops_per_average_token = torch.mean(mask * w_j_per_doc, dim=0) ** 2
@@ -193,8 +193,22 @@ class SparseModelTrainer(Trainer):
         }
 
         if self.state.global_step % self.args.logging_steps == 0:
+
+            d_mask = (d_rep > 0).float()
+            d_rep_avg = torch.sum(d_rep) / torch.sum(d_mask)
+            q_mask = (q_rep > 0).float()
+            q_rep_avg = torch.sum(q_rep) / torch.sum(q_mask)
+
+            # get the percent 90 percentile of the representation
+            d_rep_90 = torch.kthvalue(
+                d_rep[d_rep > 0], int(0.9 * d_rep[d_rep > 0].shape[0])
+            ).values.item()
+            q_rep_90 = torch.kthvalue(
+                q_rep[q_rep > 0], int(0.9 * q_rep[q_rep > 0].shape[0])
+            ).values.item()
+
             logger.info(
-                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep>0).sum()/d_rep.shape[0]}"
+                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep>0).sum()/d_rep.shape[0]}, d_rep_avg: {d_rep_avg.item()}, q_rep_avg: {q_rep_avg.item()}, d_rep_90: {d_rep_90}, q_rep_90: {q_rep_90}"
             )
         # DP reduce grad by sum, while DDP reduce grad by mean
         # scale the loss to fix the gap
