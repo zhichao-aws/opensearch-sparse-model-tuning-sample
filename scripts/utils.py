@@ -86,7 +86,11 @@ async def do_bulk(bulk_body, session, endpoint="http://localhost:9200"):
         response = await resp.json()
         if "errors" not in response:
             print(response)
-        assert response["errors"] == False
+        try: 
+            assert response["errors"] == False
+        except:
+            print(response)
+            raise Exception("bulk request failed")
 
     return response
 

@@ -17,8 +17,9 @@ pip install accelerate==1.0.0 transformers==4.44.1 datasets==3.0.1 opensearch-py
 To evaluate search relevance or mine hard negatives, run an OpenSearch node at local device. It can be accessed at `http://localhost:9200` without username/password(security disabled). For more details, please check [OpenSearch doc](https://opensearch.org/docs/latest/install-and-configure/install-opensearch/tar/). Here are steps to start a node without security:
 1. Follow the step1 and step2 in above documentation.
 2. Modify `/path/to/opensearch-2.16.0/config/opensearch.yml`, add this line: `plugins.security.disabled: true`
-3. Start a tmux session so the OpenSearch won't stop after the terminal is close `tmux new -s opensearch`. In the tmux session, run `cd /path/to/opensearch-2.16.0` and `./bin/opensearch`.
-4. The service is running. Run `curl -X GET http://localhost:9200` to test.
+4. (Optional) Modify `/path/to/opensearch-2.16.0/config/jvm.options`, replace: `-Xms1g -Xmx1g` to `-Xms32g -Xmx32g`, if you have enough memory, which is to avoid circuit breaker memory error.
+5. Start a tmux session so the OpenSearch won't stop after the terminal is close `tmux new -s opensearch`. In the tmux session, run `cd /path/to/opensearch-2.16.0` and `./bin/opensearch`.
+6. The service is running. Run `curl -X GET http://localhost:9200` to test.
 
 ### An example of fine-tuning on BEIR scifact
 Here is an example of fine-tuning the `opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill` model at BEIR scifact.

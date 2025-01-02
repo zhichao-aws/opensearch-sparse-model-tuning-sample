@@ -3,6 +3,9 @@ import torch.nn.functional as F
 import transformers
 from scripts.utils import gather_rep
 
+def lelu_functional(x, alpha=1.0, beta=1.0):
+    elu = torch.where(x > 0, x, alpha * (torch.exp(x) - 1))
+    return torch.log(alpha + beta + elu) - torch.log(torch.tensor(beta))
 
 class SparseModel(torch.nn.Module):
     @staticmethod
@@ -23,7 +26,8 @@ class SparseModel(torch.nn.Module):
         values, _ = torch.max(
             output * kwargs.get("attention_mask").unsqueeze(-1), dim=1
         )
-        values = torch.log(1 + torch.relu(values))
+        # values = torch.log(1 + torch.relu(values))
+        values = torch.log(1 + lelu_functional(values))
         values[:, self.special_token_ids] = 0
         return values
 

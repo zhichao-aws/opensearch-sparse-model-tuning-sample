@@ -8,6 +8,9 @@ from transformers import AutoModelForMaskedLM, BertForMaskedLM, AutoConfig
 
 logger = logging.getLogger(__name__)
 
+def lelu_functional(x, alpha=0, beta=1.0):
+    elu = torch.where(x > 0, x, alpha * (torch.exp(x) - 1))
+    return torch.log(alpha + beta + elu) - torch.log(torch.tensor(beta))
 
 class SparseModel(torch.nn.Module):
     def __init__(
@@ -57,7 +60,8 @@ class SparseModel(torch.nn.Module):
             values, _ = torch.max(
                 output * kwargs.get("attention_mask").unsqueeze(-1), dim=1
             )
-            values = torch.log(1 + torch.relu(values))
+            # values = torch.log(1 + torch.relu(values))
+            values = torch.log(1 + lelu_functional(values))
             return values
 
         batch_size = kwargs["input_ids"].size(0)
@@ -83,7 +87,8 @@ class SparseModel(torch.nn.Module):
             start = end
 
         output = torch.cat(outputs, dim=0)
-        output = torch.log(1 + torch.relu(output))
+        # output = torch.log(1 + torch.relu(output))
+        output = torch.log(1 + lelu_functional(output))
         return output
 
     def _encode_inf_free(self, **kwargs):
