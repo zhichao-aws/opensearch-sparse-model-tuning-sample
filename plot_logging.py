@@ -48,11 +48,13 @@ def create_subplot(ax, x, y, xlabel, ylabel, title, use_log=False):
     if use_log:
         ax.set_yscale("log")
     ax.grid(True)
+    # add a read line on warmup steps, default is 6000
+    ax.axvline(x=6000, color="r", linestyle="--", alpha=0.2)
 
 
-if __name__ == "__main__":
+def main_plot(file_path):
     # Read the log file
-    metrics = parse_log_file("path/to/log_file.txt")
+    metrics = parse_log_file(file_path)
 
     # Define plot configurations
     plot_configs = [
@@ -77,7 +79,7 @@ if __name__ == "__main__":
     ]
 
     # Create subplots
-    fig, axes = plt.subplots(3, 3, figsize=(15, 15))
+    fig, axes = plt.subplots(3, 3, figsize=(20, 15))
     axes = axes.flatten()
 
     # Create all subplots
@@ -98,3 +100,7 @@ if __name__ == "__main__":
     # Adjust layout
     plt.tight_layout()
     plt.show()
+
+
+if __name__ == "__main__":
+    main_plot("path/to/log_file.log")
