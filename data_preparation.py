@@ -2,7 +2,8 @@
 import os
 import json
 import asyncio
-from datasets import load_dataset, Dataset
+import pandas as pd
+from datasets import load_dataset
 from transformers import HfArgumentParser
 from accelerate import Accelerator
 
@@ -12,7 +13,6 @@ from scripts.utils import get_model
 from scripts.args import ModelArguments, DataTrainingArguments
 from tqdm import tqdm
 
-# scripts/data/dataset.py
 from torch.utils.data import Dataset
 
 
@@ -27,8 +27,7 @@ class MSMarcoCorpusDataset(Dataset):
     def __getitem__(self, idx):
         doc_id = self.ids[idx]
         # Return a tuple of (id, text) as expected by the ingest function
-        return doc_id, self.corpus[doc_id]['text']
-
+        return doc_id, self.corpus[doc_id]["text"]
 
 
 def load_msmarco_data(split="train", is_main_process=True):
@@ -130,16 +129,13 @@ def main():
                     {
                         "query": queries[query],
                         "pos": corpus[positive]["text"],
-                        "negs": [
-                            corpus[neg]["text"]
-                            for neg in list(docs.keys())[
-                                :10
-                            ]  # Limit to top 10 negatives
-                        ],
+                        "negs": [corpus[neg]["text"] for neg in list(docs.keys())],
                     }
                 )
 
         # Save as HuggingFace dataset
+        from datasets import Dataset
+
         ds = Dataset.from_list(data)
         ds.save_to_disk("data/msmarco_train")
 
