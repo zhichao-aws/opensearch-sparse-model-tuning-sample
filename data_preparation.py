@@ -37,7 +37,6 @@ class MSMarcoCorpusDataset(Dataset):
         # Return a tuple of (id, text) as expected by the ingest function
         return doc_id, self.corpus[doc_id]["text"]
 
-
 def normalize_scores(scores):
     """Normalize scores to [0,1] range within batch"""
     min_score = np.min(scores)
