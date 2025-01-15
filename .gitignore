@@ -2,6 +2,7 @@ output/
 data/
 config/
 models/
+tmp/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
