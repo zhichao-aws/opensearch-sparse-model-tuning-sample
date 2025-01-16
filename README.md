@@ -31,14 +31,11 @@ Our result are tested on 8 V100 (16G) GPU and Intel(R) Xeon(R) CPU E5-2686, CUDA
 ## Data Preparation
 
 ### Download Data
-We use the [MS MARCO](https://microsoft.github.io/msmarco/) dataset. Run the following codes for data preparation. You only need to pick one of the following methods.
+We use the [MS MARCO](https://microsoft.github.io/msmarco/) dataset. Run the following codes for data preparation. 
 
 ```bash
-torchrun --nproc_per_node=${N_DEVICES} data_preparation.py \
-  --model_name_or_path opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill \
-  --inf_free true \
-  --idf_path idf.json \
-  --beir_datasets msmarco
+orchrun --nproc_per_node=8 data_preparation.py \
+  --model_name_or_path opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill
 ```
 
 Finally, the data should be in the following format:

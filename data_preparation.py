@@ -137,7 +137,7 @@ def main():
         from datasets import Dataset
 
         ds = Dataset.from_list(data)
-        ds.save_to_disk("data/msmarco_train")
+        ds.save_to_disk("data/msmarco_ft")
 
 
 if __name__ == "__main__":
