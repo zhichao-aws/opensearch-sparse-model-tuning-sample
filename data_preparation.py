@@ -197,6 +197,166 @@ def get_teacher(model_index, local_rank):
         raise ValueError(f"Invalid model_index: {model_index}")
 
 
+def normalize_scores(scores):
+    """Normalize scores to [0,1] range within batch"""
+    min_score = np.min(scores)
+    max_score = np.max(scores)
+    if max_score == min_score:
+        return np.ones_like(scores)
+    return (scores - min_score) / (max_score - min_score)
+
+
+def process_batch_with_teacher(teacher, queries, documents):
+    """Process a batch of query-doc pairs with a teacher model"""
+    scores = teacher(queries, documents)
+    return normalize_scores(scores)
+
+
+def init_distributed():
+    """Initialize distributed training"""
+    local_rank = int(os.environ["LOCAL_RANK"])
+    world_size = int(os.environ["WORLD_SIZE"])
+    torch.cuda.set_device(local_rank)
+    dist.init_process_group(backend="nccl")
+    return local_rank, world_size
+
+
+class GTETeacher:
+    def __init__(self, local_rank):
+        self.device = torch.device(f"cuda:{local_rank}")
+        self.base_model = SentenceTransformer(
+            "Alibaba-NLP/gte-large-en-v1.5", trust_remote_code=True
+        )
+        self.base_model.to(self.device)
+        self.model = DDP(self.base_model, device_ids=[local_rank])
+
+    def __call__(self, queries, documents):
+        if isinstance(queries, str):
+            queries = [queries]
+        if isinstance(documents, str):
+            documents = [documents]
+
+        with torch.cuda.amp.autocast():
+            query_embeddings = self.base_model.encode(
+                queries, convert_to_tensor=True
+            ).to(self.device)
+            doc_embeddings = self.base_model.encode(
+                documents, convert_to_tensor=True
+            ).to(self.device)
+            scores = F.cosine_similarity(
+                query_embeddings.unsqueeze(1), doc_embeddings.unsqueeze(0), dim=2
+            )
+
+        return scores.cpu().numpy()
+
+
+class OpenSearchTeacher:
+    def __init__(self, local_rank):
+        self.device = torch.device(f"cuda:{local_rank}")
+        self.base_model = SentenceTransformer(
+            "opensearch-project/opensearch-neural-sparse-encoding-v1"
+        )
+        self.base_model.to(self.device)
+        self.model = DDP(self.base_model, device_ids=[local_rank])
+
+    def __call__(self, queries, documents):
+        if isinstance(queries, str):
+            queries = [queries]
+        if isinstance(documents, str):
+            documents = [documents]
+
+        with torch.cuda.amp.autocast():
+            query_embeddings = self.base_model.encode(
+                queries, convert_to_tensor=True
+            ).to(self.device)
+            doc_embeddings = self.base_model.encode(
+                documents, convert_to_tensor=True
+            ).to(self.device)
+            scores = torch.matmul(query_embeddings, doc_embeddings.t())
+
+        return scores.cpu().numpy()
+
+
+class MonoT5Teacher:
+    def __init__(self, local_rank):
+
+        self.device = torch.device(f"cuda:{local_rank}")
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            "castorini/monot5-3b-msmarco-10k"
+        )
+        self.base_model = AutoModelForSeq2SeqLM.from_pretrained(
+            "castorini/monot5-3b-msmarco-10k"
+        )
+        self.base_model.to(self.device)
+        self.model = DDP(self.base_model, device_ids=[local_rank])
+
+    def __call__(self, queries, documents):
+        if isinstance(queries, str):
+            queries = [queries]
+        if isinstance(documents, str):
+            documents = [documents]
+
+        scores = []
+        with torch.cuda.amp.autocast():
+            for query, doc in zip(queries, documents):
+                input_text = f"Query: {query} Document: {doc} Relevant:"
+                inputs = self.tokenizer(
+                    input_text, return_tensors="pt", truncation=True
+                )
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+                with torch.no_grad():
+                    outputs = self.base_model.generate(
+                        **inputs,
+                        max_length=10,
+                        return_dict_in_generate=True,
+                        output_scores=True,
+                    )
+                    score = torch.softmax(outputs.scores[0][0], dim=0)[
+                        self.tokenizer.encode("true")[0]
+                    ]
+                    scores.append(score.item())
+
+        return torch.tensor(scores).numpy()
+
+
+class CrossEncoderTeacher:
+    def __init__(self, local_rank):
+        self.device = torch.device(f"cuda:{local_rank}")
+        self.base_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2")
+        self.base_model.model = self.base_model.model.to(self.device)
+        self.model = DDP(self.base_model.model, device_ids=[local_rank])
+
+    def __call__(self, queries, documents):
+        if isinstance(queries, str):
+            queries = [queries]
+        if isinstance(documents, str):
+            documents = [documents]
+
+        pairs = [[query, doc] for query, doc in zip(queries, documents)]
+
+        with torch.cuda.amp.autocast():
+            with torch.no_grad():
+                scores = self.base_model.predict(pairs)
+
+        if isinstance(scores, (float, int)):
+            scores = np.array([scores])
+        return np.array(scores)
+
+
+def get_teacher(model_index, local_rank):
+    if model_index == 0:
+        return GTETeacher(local_rank)
+    elif model_index == 1:
+        return OpenSearchTeacher(local_rank)
+    elif model_index == 2:
+        return CrossEncoderTeacher(local_rank)
+    elif model_index == 3:
+        return MonoT5Teacher(local_rank)
+    else:
+        raise ValueError(f"Invalid model_index: {model_index}")
+
+
 def load_msmarco_data(split="train", is_main_process=True):
     if is_main_process:
         print(f"Loading MS MARCO {split} split...")
