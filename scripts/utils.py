@@ -59,6 +59,7 @@ def get_model(model_args):
         split_batch=model_args.split_batch,
         idf_requires_grad=model_args.idf_requires_grad,
         activation_type=model_args.activation_type,
+        model_type=model_args.model_type,
     )
 
     return model

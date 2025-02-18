@@ -51,6 +51,7 @@ class ModelArguments:
     split_batch: Optional[int] = field(default=1)
     idf_requires_grad: Optional[bool] = field(default=False)
     activation_type: Optional[str] = field(default="relu")
+    model_type: Optional[str] = field(default="bert")
 
     def __post_init__(self):
         if self.tokenizer_name is None:

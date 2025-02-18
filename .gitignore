@@ -1,7 +1,8 @@
 output/
 data/
 config/
-models/
+models
+config
 tmp/
 
 # Byte-compiled / optimized / DLL files
