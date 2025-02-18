@@ -58,6 +58,7 @@ def get_model(model_args):
         tokenizer_id=model_args.tokenizer_name,
         split_batch=model_args.split_batch,
         idf_requires_grad=model_args.idf_requires_grad,
+        model_type=model_args.model_type,
     )
 
     return model
@@ -86,7 +87,7 @@ async def do_bulk(bulk_body, session, endpoint="http://localhost:9200"):
         response = await resp.json()
         if "errors" not in response:
             print(response)
-        try: 
+        try:
             assert response["errors"] == False
         except:
             print(response)
