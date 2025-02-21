@@ -1,0 +1,35 @@
+logging_steps: 50
+# log_level_replica: info
+
+inf_free: true
+model_name_or_path: distilbert/distilbert-base-uncased
+tokenizer_name: distilbert/distilbert-base-uncased
+idf_path: idf.json
+
+max_seq_length: 256
+train_file: data/msmarco_ft
+data_type: kd
+loss_types: [kldiv]
+sample_num_one_query: 2
+use_in_batch_negatives: false
+flops_d_lambda: 0.04
+activation_type: l1_relu
+flops_threshold: 200
+flops_d_T: 10000
+ranking_loss_weight: 1
+
+output_dir: output/sample_experiment
+per_device_eval_batch_size: 50
+per_device_train_batch_size: 40
+
+log_level: info
+max_steps: 100000
+fp16: true
+learning_rate: 0.00002
+weight_decay: 0.01
+lr_scheduler_type: linear
+warmup_steps: 6000
+save_strategy: steps
+save_steps: 50000
+dataloader_drop_last: true
+max_grad_norm: null
