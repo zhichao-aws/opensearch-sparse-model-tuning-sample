@@ -135,12 +135,16 @@ class SparseModelTrainer(Trainer):
             q_rep_avg = torch.sum(q_rep) / torch.sum(q_mask)
 
             # get the percent 90 percentile of the representation
-            d_rep_90 = torch.kthvalue(
-                d_rep[d_rep > 0], int(0.9 * d_rep[d_rep > 0].shape[0])
-            ).values.item()
-            q_rep_90 = torch.kthvalue(
-                q_rep[q_rep > 0], int(0.9 * q_rep[q_rep > 0].shape[0])
-            ).values.item()
+            try:
+                d_rep_90 = torch.kthvalue(
+                    d_rep[d_rep > 0], int(0.9 * d_rep[d_rep > 0].shape[0])
+                ).values.item()
+                q_rep_90 = torch.kthvalue(
+                    q_rep[q_rep > 0], int(0.9 * q_rep[q_rep > 0].shape[0])
+                ).values.item()
+            except:
+                d_rep_90 = 'N/A'
+                q_rep_90 = 'N/A'
 
             logger.info(
                 f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep>0).sum()/d_rep.shape[0]}, d_rep_avg: {d_rep_avg.item()}, q_rep_avg: {q_rep_avg.item()}, d_rep_90: {d_rep_90}, q_rep_90: {q_rep_90}"
