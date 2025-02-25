@@ -2,7 +2,12 @@ import torch
 import transformers
 import itertools
 import logging
-from transformers import T5EncoderModel, T5Tokenizer, AutoConfig, AutoModelForMaskedLM
+from transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    AutoModelForMaskedLM,
+    T5ForConditionalGeneration,
+)
 
 from .decomposition_bert import DecompBertConfig, DecompBertForMaskedLM
 
@@ -40,13 +45,12 @@ class SparseModel(torch.nn.Module):
             tokenizer_id = model_id
 
         if model_type == "flan-t5":
-            self.backbone = T5EncoderModel.from_pretrained(model_id)
-            self.tokenizer = T5Tokenizer.from_pretrained(
-                tokenizer_id
-            )  # actually we can also use the bert tokenizer as the vocab size
-            self.vocab_projection = torch.nn.Linear(
-                self.backbone.config.d_model, len(self.tokenizer)
-            )
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
+            self.backbone = T5ForConditionalGeneration.from_pretrained(model_id)
+            # resize the  token embeddings to match the tokenizer's vocab size, see [issues](https://github.com/huggingface/transformers/issues/4875)
+            self.backbone.resize_token_embeddings(
+                len(self.tokenizer)
+            )  # otherwise the default vocab size in T5Config is 32128, which leads to vocab_size mismatch
             self.special_token_ids = []
             for special_token in self.tokenizer.all_special_tokens:
                 token_id = self.tokenizer.convert_tokens_to_ids(special_token)
@@ -61,7 +65,7 @@ class SparseModel(torch.nn.Module):
                 for token in self.tokenizer.special_tokens_map.values()
             ]
 
-        vocab_size = len(self.tokenizer)
+        vocab_size = self.tokenizer.vocab_size
         idf_vector = [1.0] * vocab_size
         if idf is not None:
             logger.info(f"set idf to the model. requires_grad: {idf_requires_grad}")
@@ -77,7 +81,6 @@ class SparseModel(torch.nn.Module):
         )
         self.split_batch = split_batch
         self.idf_requires_grad = idf_requires_grad
-
         self.activation_function = get_activation_function(activation_type)
 
     def forward(self, inf_free=False, **kwargs):
@@ -88,44 +91,65 @@ class SparseModel(torch.nn.Module):
 
     def _encode(self, **kwargs):
         if self.model_type == "flan-t5":
-            output = self.backbone(**kwargs)[0]
-            logits = self.vocab_projection(output)
+            encoder_hidden_states = self.backbone.encoder(
+                input_ids=kwargs["input_ids"],
+                attention_mask=kwargs["attention_mask"],
+            )[
+                0
+            ]  # (batch_size, seq_len, emb_dim: 768)
+            batch_size = kwargs["input_ids"].shape[0]
+            decoder_input_ids = torch.zeros(
+                (batch_size, 1), dtype=torch.long, device=kwargs["input_ids"].device
+            )
+            decoder_outputs = self.backbone.decoder(
+                input_ids=decoder_input_ids,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attention_mask=kwargs["attention_mask"],
+            )  # (batch_size, 1, emb_dim: 768)
+            sequence_output = decoder_outputs[0]
+
+            # apply scaling if word embeddings are tied
+            if self.backbone.config.tie_word_embeddings:
+                sequence_output = sequence_output * (self.backbone.model_dim**-0.5)
+
+            logits = self.backbone.lm_head(sequence_output)
             values, _ = torch.max(
                 logits * kwargs.get("attention_mask").unsqueeze(-1), dim=1
             )
-            return torch.log(1 + torch.relu(values))
+            return torch.log(1 + self.activation_function(values))
 
-        if self.split_batch == 1:
-            output = self.backbone(**kwargs)[0]
-            values, _ = torch.max(
-                output * kwargs.get("attention_mask").unsqueeze(-1), dim=1
-            )
-            values = torch.log(1 + self.activation_function(values))
-            return values
+        else:
+            if self.split_batch == 1:
+                output = self.backbone(**kwargs)[0]
+                values, _ = torch.max(
+                    output * kwargs.get("attention_mask").unsqueeze(-1), dim=1
+                )
+                values = torch.log(1 + self.activation_function(values))
+                return values
 
-        batch_size = kwargs["input_ids"].size(0)
-        split_sizes = [batch_size // self.split_batch] * self.split_batch
-        remainder = batch_size % self.split_batch
-        for i in range(remainder):
-            split_sizes[i] += 1
+            batch_size = kwargs["input_ids"].size(0)
+            split_sizes = [batch_size // self.split_batch] * self.split_batch
+            remainder = batch_size % self.split_batch
+            for i in range(remainder):
+                split_sizes[i] += 1
 
-        outputs = []
-        start = 0
-        attention_mask = kwargs.get("attention_mask")
-        output = self.backbone.bert(**kwargs)[0]
-        output = self.backbone.cls.predictions.transform(output)
-        for split_size in split_sizes:
-            end = start + split_size
-            values = self.backbone.cls.predictions.decoder(output[start:end])
-            values, _ = torch.max(
-                values * attention_mask[start:end].unsqueeze(-1), dim=1
-            )
-            outputs.append(values)
-            start = end
+            outputs = []
+            start = 0
+            attention_mask = kwargs.get("attention_mask")
+            output = self.backbone.bert(**kwargs)[0]
+            output = self.backbone.cls.predictions.transform(output)
+            for split_size in split_sizes:
+                end = start + split_size
+                values = self.backbone.cls.predictions.decoder(output[start:end])
+                values, _ = torch.max(
+                    values * attention_mask[start:end].unsqueeze(-1), dim=1
+                )
+                outputs.append(values)
+                start = end
 
-        output = torch.cat(outputs, dim=0)
-        output = torch.log(1 + self.activation_function(output))
-        return output
+            output = torch.cat(outputs, dim=0)
+            output = torch.log(1 + self.activation_function(output))
+            return output
 
     def _encode_inf_free(self, **kwargs):
         input_ids = kwargs.get("input_ids")
@@ -139,12 +163,9 @@ class SparseModel(torch.nn.Module):
 class SparsePostProcessor(object):
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
-        if isinstance(tokenizer, T5Tokenizer):
-            self.id_to_token = tokenizer.convert_ids_to_tokens(range(len(tokenizer)))
-        else:
-            self.id_to_token = ["" for i in range(tokenizer.vocab_size)]
-            for token, _id in tokenizer.vocab.items():
-                self.id_to_token[_id] = token
+        self.id_to_token = ["" for i in range(tokenizer.vocab_size)]
+        for token, _id in tokenizer.vocab.items():
+            self.id_to_token[_id] = token
 
     def __call__(self, sparse_vector):
         sparse_vector[:, 0] = 1
