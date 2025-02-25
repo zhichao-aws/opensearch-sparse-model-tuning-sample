@@ -9,6 +9,19 @@ from transformers import AutoModelForMaskedLM, BertForMaskedLM, AutoConfig
 logger = logging.getLogger(__name__)
 
 
+def get_activation_function(activation_type):
+    if activation_type == "relu":
+        return torch.relu
+    elif activation_type == "l1_relu":
+        return lambda x: torch.log(1 + torch.relu(x))
+    elif activation_type == "l2_relu":
+        return lambda x: torch.log(1 + torch.log(1 + torch.relu(x)))
+    elif activation_type == "l3_relu":
+        return lambda x: torch.log(1 + torch.log(1 + torch.log(1 + torch.relu(x))))
+    else:
+        raise ValueError(f"Unknown activation function: {activation_type}")
+
+
 class SparseModel(torch.nn.Module):
     def __init__(
         self,
@@ -17,6 +30,7 @@ class SparseModel(torch.nn.Module):
         tokenizer_id=None,
         split_batch=1,
         idf_requires_grad=False,
+        activation_type="relu",
     ):
         super().__init__()
 
@@ -44,6 +58,8 @@ class SparseModel(torch.nn.Module):
         self.split_batch = split_batch
         self.idf_requires_grad = idf_requires_grad
 
+        self.activation_function = get_activation_function(activation_type)
+
     def forward(self, inf_free=False, **kwargs):
         # input kwargs is the features from tokenizer
         if inf_free:
@@ -57,7 +73,8 @@ class SparseModel(torch.nn.Module):
             values, _ = torch.max(
                 output * kwargs.get("attention_mask").unsqueeze(-1), dim=1
             )
-            values = torch.log(1 + torch.relu(values))
+            # values = torch.log(1 + torch.relu(values))
+            values = torch.log(1 + self.activation_function(values))
             return values
 
         batch_size = kwargs["input_ids"].size(0)
@@ -83,7 +100,8 @@ class SparseModel(torch.nn.Module):
             start = end
 
         output = torch.cat(outputs, dim=0)
-        output = torch.log(1 + torch.relu(output))
+        # output = torch.log(1 + torch.relu(output))
+        output = torch.log(1 + self.activation_function(output))
         return output
 
     def _encode_inf_free(self, **kwargs):

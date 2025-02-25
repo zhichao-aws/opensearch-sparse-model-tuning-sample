@@ -62,7 +62,17 @@ class SparseModelTrainer(Trainer):
         # representation size: (ndevice * batch_size) * vocab_dim
         # group num: how many semantic similar documents representations in one batch
         representation = representation.reshape(-1, group_num, representation.shape[-1])
-        return torch.sum(torch.mean(torch.abs(representation), dim=0) ** 2)
+        if self.data_args.flops_threshold is None:
+            return torch.sum(torch.mean(torch.abs(representation), dim=0) ** 2)
+        else:
+            if self.data_args.decouple_activation:
+                w_j_per_doc = torch.log(1 + torch.abs(representation))  # N, vocab_dim
+            w_j_per_doc = torch.abs(representation)  # N, vocab_dim
+            doc_length = torch.norm(w_j_per_doc, p=0, dim=2)  # N
+            mask = (doc_length > self.data_args.flops_threshold).float()  # N
+            mask = mask.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])  # N, vocab_dim
+            flops_per_average_token = torch.mean(mask * w_j_per_doc, dim=0) ** 2
+            return torch.sum(flops_per_average_token)
 
     def get_lambda(self, lambda_value, lambda_T):
         if self.state.global_step >= lambda_T:
@@ -118,8 +128,22 @@ class SparseModelTrainer(Trainer):
         }
 
         if self.state.global_step % self.args.logging_steps == 0:
+
+            d_mask = (d_rep > 0).float()
+            d_rep_avg = torch.sum(d_rep) / torch.sum(d_mask)
+            q_mask = (q_rep > 0).float()
+            q_rep_avg = torch.sum(q_rep) / torch.sum(q_mask)
+
+            # get the percent 90 percentile of the representation
+            d_rep_90 = torch.kthvalue(
+                d_rep[d_rep > 0], int(0.9 * d_rep[d_rep > 0].shape[0])
+            ).values.item()
+            q_rep_90 = torch.kthvalue(
+                q_rep[q_rep > 0], int(0.9 * q_rep[q_rep > 0].shape[0])
+            ).values.item()
+
             logger.info(
-                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep>0).sum()/d_rep.shape[0]}"
+                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep>0).sum()/d_rep.shape[0]}, d_rep_avg: {d_rep_avg.item()}, q_rep_avg: {q_rep_avg.item()}, d_rep_90: {d_rep_90}, q_rep_90: {q_rep_90}"
             )
         # DP reduce grad by sum, while DDP reduce grad by mean
         # scale the loss to fix the gap

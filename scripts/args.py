@@ -28,6 +28,8 @@ class DataTrainingArguments:
     use_in_batch_negatives: bool = field(default=False)
     flops_d_lambda: float = field(default=1e-3)
     flops_d_T: float = field(default=10000)
+    flops_threshold: float = field(default=None)
+    decouple_activation: bool = field(default=False)
     flops_q_lambda: float = field(default=None)
     flops_q_T: float = field(default=None)
     ranking_loss_weight: float = field(default=1)
@@ -48,6 +50,7 @@ class ModelArguments:
     idf_path: Optional[str] = field(default=None)
     split_batch: Optional[int] = field(default=1)
     idf_requires_grad: Optional[bool] = field(default=False)
+    activation_type: Optional[str] = field(default="relu")
 
     def __post_init__(self):
         if self.tokenizer_name is None:
