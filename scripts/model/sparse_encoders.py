@@ -43,7 +43,7 @@ class SparseModel(torch.nn.Module):
             self.backbone = T5EncoderModel.from_pretrained(model_id)
             self.tokenizer = T5Tokenizer.from_pretrained(
                 tokenizer_id
-            )  # actullay we can also use the bert tokenizer as the vocab size
+            )  # actually we can also use the bert tokenizer as the vocab size
             self.vocab_projection = torch.nn.Linear(
                 self.backbone.config.d_model, len(self.tokenizer)
             )
@@ -88,13 +88,8 @@ class SparseModel(torch.nn.Module):
 
     def _encode(self, **kwargs):
         if self.model_type == "flan-t5":
-            outputs = self.backbone(
-                input_ids=kwargs["input_ids"],
-                attention_mask=kwargs.get("attention_mask"),
-                return_dict=True,
-            )
-            hidden_states = outputs.last_hidden_state
-            logits = self.vocab_projection(hidden_states)
+            output = self.backbone(**kwargs)[0]
+            logits = self.vocab_projection(output)
             values, _ = torch.max(
                 logits * kwargs.get("attention_mask").unsqueeze(-1), dim=1
             )
@@ -105,7 +100,6 @@ class SparseModel(torch.nn.Module):
             values, _ = torch.max(
                 output * kwargs.get("attention_mask").unsqueeze(-1), dim=1
             )
-            # values = torch.log(1 + torch.relu(values))
             values = torch.log(1 + self.activation_function(values))
             return values
 
@@ -130,7 +124,6 @@ class SparseModel(torch.nn.Module):
             start = end
 
         output = torch.cat(outputs, dim=0)
-        # output = torch.log(1 + torch.relu(output))
         output = torch.log(1 + self.activation_function(output))
         return output
 
@@ -176,7 +169,7 @@ class SparseEncoder:
         self.post_processor = SparsePostProcessor(tokenizer=sparse_model.tokenizer)
         self.do_count = do_count
         self.max_length = max_length
-        self.device = next(self.model.parameters()).device
+        self.device = self.model.backbone.device
         self.count_tensor = torch.zeros(len(self.tokenizer)).to(self.device)
 
     def reset_count(self):
