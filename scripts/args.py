@@ -35,6 +35,8 @@ class DataTrainingArguments:
         default_factory=dict,
     )
     idf_lr: Optional[float] = field(default=None)
+    lelu_alpha: Optional[float] = field(default=None)
+    lelu_alpha_steps: Optional[int] = field(default=None)
 
     def __post_init__(self):
         return

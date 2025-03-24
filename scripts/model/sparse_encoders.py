@@ -2,11 +2,20 @@ import torch
 import transformers
 import itertools
 import logging
+import torch.nn.functional as F
 
 from .decomposition_bert import DecompBertConfig, DecompBertForMaskedLM
 from transformers import AutoModelForMaskedLM, BertForMaskedLM, AutoConfig
 
 logger = logging.getLogger(__name__)
+
+
+def mask_padded_positions(repr_vector, attention_mask):
+    mask = attention_mask.unsqueeze(-1)  # [batch_size, seq_len, 1]
+    mask = mask.expand_as(repr_vector)  # [batch_size, seq_len, D]
+
+    masked_repr = repr_vector.masked_fill(mask == 0, float("-inf"))
+    return masked_repr
 
 
 class SparseModel(torch.nn.Module):
@@ -16,6 +25,7 @@ class SparseModel(torch.nn.Module):
         idf=None,
         tokenizer_id=None,
         idf_requires_grad=False,
+        prune_ratio=None,
     ):
         super().__init__()
 
@@ -41,6 +51,9 @@ class SparseModel(torch.nn.Module):
             torch.tensor(idf_vector), requires_grad=idf_requires_grad
         )
         self.idf_requires_grad = idf_requires_grad
+        self.lelu_alpha = 0
+        self.prune_ratio = prune_ratio
+        logger.info(f"model prune ratio: {prune_ratio}")
 
     def forward(self, inf_free=False, **kwargs):
         # input kwargs is the features from tokenizer
@@ -50,12 +63,16 @@ class SparseModel(torch.nn.Module):
             return self._encode(**kwargs)
 
     def _encode(self, **kwargs):
+        attention_mask = kwargs.get("attention_mask")
         output = self.backbone(**kwargs)[0]
-        values, _ = torch.max(
-            output * kwargs.get("attention_mask").unsqueeze(-1), dim=1
-        )
-        values = torch.log(1 + torch.relu(values))
-        return values
+        output = mask_padded_positions(output, attention_mask)
+        values, _ = torch.max(output, dim=1)
+        values = torch.log(1 + self.lelu_alpha + F.elu(values, self.lelu_alpha))
+        if self.prune_ratio is None:
+            return values
+        else:
+            max_values = values.max(dim=-1)[0].unsqueeze(1) * self.prune_ratio
+            return values * (values > max_values)
 
     def _encode_inf_free(self, **kwargs):
         input_ids = kwargs.get("input_ids")

@@ -31,9 +31,11 @@ def cached(func):
 def get_corpus(source, dataset):
     if source == "miracl" or source == "tydi":
         dataset = load_dataset(
-            "miracl/miracl-corpus"
-            if source == "miracl"
-            else "castorini/mr-tydi-corpus",
+            (
+                "miracl/miracl-corpus"
+                if source == "miracl"
+                else "castorini/mr-tydi-corpus"
+            ),
             dataset,
             trust_remote_code=True,
             split="train",
