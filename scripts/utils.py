@@ -56,7 +56,6 @@ def get_model(model_args):
         model_args.model_name_or_path,
         idf=idf,
         tokenizer_id=model_args.tokenizer_name,
-        split_batch=model_args.split_batch,
         idf_requires_grad=model_args.idf_requires_grad,
     )
 
