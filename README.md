@@ -1,4 +1,18 @@
 # Exploring $\ell_0$ Sparsicifaction for Inference-free Sparse Retrievers
+<div>
+    <p>
+        <a href='https://arxiv.org/abs/2504.14839'><img src='https://img.shields.io/badge/arXiv-2504.14839-b31b1b'></a>
+        <img src="https://img.shields.io/badge/python-3.11-blue">
+        <a href='https://opensearch.org/slack.html'><img src='https://img.shields.io/badge/Slack-Join-green'></a>
+        <a href='https://huggingface.co/opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill'><img src='https://img.shields.io/badge/Hugging%20Face-Model%20Weights-blue'></a>
+        <a href='https://paperswithcode.com/sota/zero-shot-on-beir-inference-free-model-on?p=exploring-ell-0-sparsification-for-inference'><img src='https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/exploring-ell-0-sparsification-for-inference/zero-shot-on-beir-inference-free-model-on'></a>
+    </p>
+</div>
+
+## News
++ 📢: We have released our paper on arXiv. Check it out [here](https://arxiv.org/abs/2504.14839).
++ 📢: Our model is now available on Hugging Face. Try it [here](https://huggingface.co/opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill).
++ 📢: Our paper has been accepted by SIGIR 2025.
 
 ## Prepare the environment
 
@@ -60,3 +74,27 @@ Key parameters we discussed in the paper, here in the configuration files are:
 - `decouple_activation`: bool, whether to decouple the $\ell_0$ activation function.
 
 The results will be saved in the `output` directory based on the configuration.  
+
+## FAQ
++ **How can I finetune the model on my own?**
+  Great! Please check the main branch, which shows how to use our code to finetune the model.
+  
++ **What is the difference between the released Hugging Face model and the paper-reported model?**
+  We performed a fair zero-shot experiment and reported the performance in our paper. For the model released on Hugging Face, we added more data (detailed in the Hugging Face README) for production purposes.
+  
++ **More questions?**
+  Please don't hesitate to open an issue or contact the authors.
+
+
+## Cite
+If you find our work helpful, please cite it as follows:
+```bibtex
+@article{shen2025explore,
+  title={Exploring $\ell_0$ Sparsification for Inference-free Sparse Retrievers},
+  author={Xinjie Shen and Zhichao Geng and Yang Yang},
+  year={2025},
+  eprint={2504.14839},
+  archivePrefix={arXiv},
+  primaryClass={cs.IR}
+}
+
