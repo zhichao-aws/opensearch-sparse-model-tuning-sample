@@ -1,4 +1,10 @@
-> **Note:** This sample works with OpenSearch Project. We encourage you to join the [public Slack](https://opensearch.org/slack.html) for questions.
+> **News:** Switch to the [l0_enhance](https://github.com/zhichao-aws/opensearch-sparse-model-tuning-sample/tree/l0_enhance) branch of this repository to explore our implementation of the paper ["[SIGIR 2025] Exploring $\ell_0$ Sparsification for Inference-free Sparse Retrievers"](https://arxiv.org/abs/2504.14839)!<div>
+    <p>
+        <a href='https://arxiv.org/abs/2504.14839'><img src='https://img.shields.io/badge/arXiv-2504.14839-b31b1b'></a>
+        <a href='https://opensearch.org/slack.html'><img src='https://img.shields.io/badge/Slack-Join-green'></a>
+        <a href='https://huggingface.co/opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill'><img src='https://img.shields.io/badge/Hugging%20Face-Model%20Weights-blue'></a>
+    </p>
+</div>
 
 # Process of fine-tuning neural-sparse model on customized dataset
 
