@@ -13,6 +13,7 @@
 + 📢: We have released our paper on arXiv. Check it out [here](https://arxiv.org/abs/2504.14839).
 + 📢: Our model is now available on Hugging Face. Try it [here](https://huggingface.co/opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill).
 + 📢: Our paper has been accepted by SIGIR 2025.
++ 📢: Our methods have been included in [Sentence-Transformers v5](https://github.com/UKPLab/sentence-transformers/releases/tag/v5.0.0)! Find the usage from the blogs, 1) [Huggingface](https://huggingface.co/blog/train-sparse-encoder) 2) [OpenSearch](https://opensearch.org/blog/neural-sparse-models-are-now-available-in-hugging-face-sentence-transformers/)
 
 ## Prepare the environment
 
@@ -89,6 +90,17 @@ The results will be saved in the `output` directory based on the configuration.
 ## Cite
 If you find our work helpful, please cite it as follows:
 ```bibtex
+@inproceedings{Shen_2025, series={SIGIR ’25},
+   title={Exploring $\ell_0$ parsification for Inference-free Sparse Retrievers},
+   url={http://dx.doi.org/10.1145/3726302.3730192},
+   DOI={10.1145/3726302.3730192},
+   booktitle={Proceedings of the 48th International ACM SIGIR Conference on Research and Development in Information Retrieval},
+   publisher={ACM},
+   author={Shen, Xinjie and Geng, Zhichao and Yang, Yang},
+   year={2025},
+   month=jul, pages={2572–2576},
+   collection={SIGIR ’25} }
+
 @article{shen2025explore,
   title={Exploring $\ell_0$ Sparsification for Inference-free Sparse Retrievers},
   author={Xinjie Shen and Zhichao Geng and Yang Yang},
