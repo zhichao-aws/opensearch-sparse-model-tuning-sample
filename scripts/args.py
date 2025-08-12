@@ -35,8 +35,15 @@ class DataTrainingArguments:
         default_factory=dict,
     )
     idf_lr: Optional[float] = field(default=None)
-    lelu_alpha: Optional[float] = field(default=None)
-    lelu_alpha_steps: Optional[int] = field(default=None)
+    first_rank_thresh: int = field(default=10000)
+    use_two_phase: bool = field(default=False)
+    skip_ingest: bool = field(default=False)
+    do_search: bool = field(default=True)
+    query_prune: float = field(default=0)
+    flops_threshold: int = field(default=None)
+    swap_times: float = field(default=0)
+    temperature: float = field(default=1.0)
+    score_scale: float = field(default=1.0)
 
     def __post_init__(self):
         return
@@ -49,10 +56,17 @@ class ModelArguments:
     tokenizer_name: Optional[str] = field(default=None)
     idf_path: Optional[str] = field(default=None)
     idf_requires_grad: Optional[bool] = field(default=False)
+    prune_ratio: Optional[float] = field(default=None)
+    preprocess_func: Optional[str] = field(default=None)
+    use_l0: bool = field(default=False)
 
     def __post_init__(self):
         if self.tokenizer_name is None:
             self.tokenizer_name = self.model_name_or_path
+        if self.idf_path == "null":
+            self.idf_path = None
+        if self.preprocess_func == "null":
+            self.preprocess_func = None
         return
 
 

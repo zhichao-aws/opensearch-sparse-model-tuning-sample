@@ -1,23 +1,28 @@
 import yaml
 import logging
 import os
+import requests
 import sys
+import subprocess
+import time
 from dataclasses import asdict
 
 from scripts.train.trainer import SparseModelTrainer
 from scripts.train.loss import LOSS_CLS_MAP
-from scripts.data.dataset import (
+from scripts.dataset.dataset import (
     load_dataset,
     load_datasets,
 )
-from scripts.data.collator import (
+from scripts.dataset.collator import (
     COLLATOR_CLS_MAP,
 )
 from scripts.utils import set_logging, get_model
 from scripts.args import parse_args
+from scripts.async_embedding_server import EmbeddingService
 
+from torch.optim import AdamW
 from transformers import set_seed
-from transformers.optimization import AdamW, get_linear_schedule_with_warmup
+from transformers.optimization import get_linear_schedule_with_warmup
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +46,16 @@ def main():
     set_logging(training_args, "train.log")
     set_seed(training_args.seed)
 
+    # set up embedding server
+    embedding_service = None
+    if (
+        len(data_args.kd_ensemble_teacher_kwargs) != 0
+        and "remote" in data_args.kd_ensemble_teacher_kwargs["types"]
+    ):
+        embedding_service = EmbeddingService()
+        logger.info(embedding_service.health_check())
+        logger.info(f"embedding service has been started.")
+
     # model
     model = get_model(model_args)
 
@@ -49,6 +64,7 @@ def main():
         model.tokenizer,
         data_args.max_seq_length,
         data_args.kd_ensemble_teacher_kwargs.get("teacher_tokenizer_ids", []),
+        embedding_service=embedding_service,
     )
     logger.info(f"data collator: {data_collator}")
 
@@ -61,6 +77,7 @@ def main():
             loss_cls(
                 use_in_batch_negatives=data_args.use_in_batch_negatives,
                 weight=data_args.ranking_loss_weight,
+                temperature=data_args.temperature,
             )
         )
 
@@ -93,16 +110,18 @@ def main():
         dataset = load_dataset(
             path=data_args.train_file,
             cls=data_args.data_type,
-            shuffle=False,
+            swap_times=data_args.swap_times,
             sample_num_one_query=data_args.sample_num_one_query,
+            first_rank_thresh=data_args.first_rank_thresh,
         )
     elif data_args.train_file_dir is not None:
         dataset = load_datasets(
             path=data_args.train_file_dir,
             cls=data_args.data_type,
             training_args=training_args,
-            shuffle=False,
+            swap_times=data_args.swap_times,
             sample_num_one_query=data_args.sample_num_one_query,
+            first_rank_thresh=data_args.first_rank_thresh,
         )
     else:
         raise ValueError("train_file or train_file_dir must be specified")
@@ -120,9 +139,12 @@ def main():
 
     if len(data_args.kd_ensemble_teacher_kwargs) != 0:
         logger.info(f"Set bi-encoder teacher. {data_args.kd_ensemble_teacher_kwargs}")
-        trainer.set_bi_encoder_teacher()
+        trainer.set_bi_encoder_teacher(embedding_service=embedding_service)
     trainer.train()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        os.system("pkill -f async_embedding_server")

@@ -2,7 +2,7 @@ import os
 import json
 import asyncio
 
-from scripts.data.dataset import BEIRCorpusDataset
+from scripts.dataset.dataset import BEIRCorpusDataset
 from scripts.ingest import ingest
 from scripts.search import search
 from scripts.utils import get_model

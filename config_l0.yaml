@@ -1,0 +1,34 @@
+logging_steps: 50
+# log_level_replica: info
+
+inf_free: true
+model_name_or_path: Luyu/co-condenser-marco
+tokenizer_name: Luyu/co-condenser-marco
+idf_path: idf.json
+
+max_seq_length: 256
+train_file: data/msmarco_ft
+data_type: kd
+loss_types: [kldiv]
+sample_num_one_query: 2
+use_in_batch_negatives: false
+flops_d_lambda: 0.08
+flops_d_T: 40000
+use_l0: true
+flops_threshold: 150
+
+output_dir: output/reproduce/l0
+per_device_eval_batch_size: 50
+per_device_train_batch_size: 20
+
+log_level: info
+max_steps: 100000
+fp16: true
+learning_rate: 0.00002
+weight_decay: 0.01
+lr_scheduler_type: linear
+warmup_steps: 6000
+save_strategy: steps
+save_steps: 100000
+dataloader_drop_last: true
+max_grad_norm: null

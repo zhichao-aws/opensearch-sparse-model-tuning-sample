@@ -16,8 +16,9 @@ class SparseTrainingLoss:
 
 
 class KLDivLoss(SparseTrainingLoss):
-    def __init__(self, use_in_batch_negatives=False, weight=1):
+    def __init__(self, use_in_batch_negatives=False, weight=1, temperature=1.0):
         self.use_in_batch_negatives = use_in_batch_negatives
+        self.temperature = temperature
         self.loss = torch.nn.KLDivLoss(reduction="none")
         super().__init__(weight)
 
@@ -35,15 +36,17 @@ class KLDivLoss(SparseTrainingLoss):
         else:
             student_scores = torch.matmul(q_rep, d_rep.t())
 
-        student_scores = torch.log_softmax(student_scores, dim=1)
-        teacher_scores = torch.softmax(teacher_scores, dim=1)
+        # Apply temperature scaling
+        student_scores = torch.log_softmax(student_scores / self.temperature, dim=1)
+        teacher_scores = torch.softmax(teacher_scores / self.temperature, dim=1)
         loss = self.loss(student_scores, teacher_scores).sum(dim=1).mean(dim=0)
         return loss
 
 
 class MarginMSELoss(SparseTrainingLoss):
-    def __init__(self, use_in_batch_negatives=False, weight=1):
+    def __init__(self, use_in_batch_negatives=False, weight=1, temperature=1.0):
         self.use_in_batch_negatives = use_in_batch_negatives
+        self.temperature = temperature
         self.loss = torch.nn.MSELoss()
         self.margin_func = (
             lambda x: x[:, 0].reshape(-1, 1).expand(x.shape[0], x.shape[1] - 1)
@@ -64,6 +67,10 @@ class MarginMSELoss(SparseTrainingLoss):
         else:
             student_scores = torch.matmul(q_rep, d_rep.t())
 
+        # Apply temperature scaling
+        student_scores = student_scores / self.temperature
+        teacher_scores = teacher_scores / self.temperature
+
         loss = self.loss(
             self.margin_func(student_scores), self.margin_func(teacher_scores)
         )
@@ -71,7 +78,7 @@ class MarginMSELoss(SparseTrainingLoss):
 
 
 class InfoNCELoss(SparseTrainingLoss):
-    def __init__(self, weight=1, use_in_batch_negatives=False):
+    def __init__(self, weight=1, use_in_batch_negatives=False, **kwargs):
         self.loss = torch.nn.CrossEntropyLoss()
         self.use_in_batch_negatives = use_in_batch_negatives
         super().__init__(weight)

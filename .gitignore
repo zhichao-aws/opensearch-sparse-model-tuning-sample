@@ -5,6 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
+*.npy
+*.json
 
 # Distribution / packaging
 .Python
@@ -161,4 +163,29 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 mdata/
+data
+output
+test
 .vscode
+
+scores
+*.npy
+*.arrow
+*.pt
+*.pth
+*.pkl
+*.tar
+*.gz
+*.bz2
+*.xz
+*.lzma
+*.lz
+*.zip
+*.7z
+*.rar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.lzma
+*.tar.lz
+*.jsonl

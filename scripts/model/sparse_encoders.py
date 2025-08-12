@@ -2,20 +2,41 @@ import torch
 import transformers
 import itertools
 import logging
-import torch.nn.functional as F
-
-from .decomposition_bert import DecompBertConfig, DecompBertForMaskedLM
-from transformers import AutoModelForMaskedLM, BertForMaskedLM, AutoConfig
 
 logger = logging.getLogger(__name__)
 
 
-def mask_padded_positions(repr_vector, attention_mask):
-    mask = attention_mask.unsqueeze(-1)  # [batch_size, seq_len, 1]
-    mask = mask.expand_as(repr_vector)  # [batch_size, seq_len, D]
+class TokenizerWithProcessing:
+    def __init__(self, original, process=None):
+        self._original = original
+        self.process = process
 
-    masked_repr = repr_vector.masked_fill(mask == 0, float("-inf"))
-    return masked_repr
+    def __call__(self, text, **kwargs):
+        assert isinstance(text, list)
+        assert isinstance(text[0], str)
+        if self.process is not None:
+            text = self.process(text)
+        return self._original.__call__(text, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._original, name)
+
+
+class TextPreProcessors:
+    @staticmethod
+    def to_lower(texts):
+        texts = [text.lower() for text in texts]
+        return texts
+
+    @staticmethod
+    def blank_prefix(texts):
+        texts = [" " + text for text in texts]
+        return texts
+
+    @staticmethod
+    def blank_prefix_lower(texts):
+        texts = [" " + text.lower() for text in texts]
+        return texts
 
 
 class SparseModel(torch.nn.Module):
@@ -26,22 +47,43 @@ class SparseModel(torch.nn.Module):
         tokenizer_id=None,
         idf_requires_grad=False,
         prune_ratio=None,
+        preprocess_func=None,
+        use_l0=True,
     ):
         super().__init__()
 
-        AutoConfig.register("DecompBert", DecompBertConfig)
-        AutoModelForMaskedLM.register(DecompBertConfig, DecompBertForMaskedLM)
-
         if tokenizer_id is None:
             tokenizer_id = model_id
-        self.backbone = transformers.AutoModelForMaskedLM.from_pretrained(model_id)
+        self.backbone = transformers.AutoModelForMaskedLM.from_pretrained(
+            model_id, trust_remote_code=True
+        )
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_id)
+        if preprocess_func is not None:
+            logger.info(f"Using preprocess function {preprocess_func}")
+            func = getattr(TextPreProcessors, preprocess_func)
+            sample = ["Hello WorldABC."]
+            logger.info(f"before:{sample}, after:{func(sample)}")
+            self.tokenizer = TokenizerWithProcessing(self.tokenizer, func)
+
         self.special_token_ids = [
             self.tokenizer.vocab[token]
             for token in self.tokenizer.special_tokens_map.values()
         ]
 
-        idf_vector = [1.0] * self.tokenizer.vocab_size
+        self.vocab_size = len(self.tokenizer.vocab)
+        try:
+            emb_vocab_size = self.backbone.new.embeddings.word_embeddings.weight.shape[
+                0
+            ]
+            if emb_vocab_size != self.vocab_size:
+                logger.info(
+                    f"reset the vocab size from {self.vocab_size} to {emb_vocab_size}"
+                )
+                self.vocab_size = emb_vocab_size
+        except:
+            pass
+
+        idf_vector = [1.0] * self.vocab_size
         if idf is not None:
             logger.info(f"set idf to the model. requires_grad: {idf_requires_grad}")
             for token, weight in idf.items():
@@ -51,9 +93,9 @@ class SparseModel(torch.nn.Module):
             torch.tensor(idf_vector), requires_grad=idf_requires_grad
         )
         self.idf_requires_grad = idf_requires_grad
-        self.lelu_alpha = 0
         self.prune_ratio = prune_ratio
-        logger.info(f"model prune ratio: {prune_ratio}")
+        self.use_l0 = use_l0
+        logger.info(f"model prune ratio: {self.prune_ratio}, use l0: {self.use_l0}")
 
     def forward(self, inf_free=False, **kwargs):
         # input kwargs is the features from tokenizer
@@ -63,11 +105,13 @@ class SparseModel(torch.nn.Module):
             return self._encode(**kwargs)
 
     def _encode(self, **kwargs):
-        attention_mask = kwargs.get("attention_mask")
         output = self.backbone(**kwargs)[0]
-        output = mask_padded_positions(output, attention_mask)
-        values, _ = torch.max(output, dim=1)
-        values = torch.log(1 + self.lelu_alpha + F.elu(values, self.lelu_alpha))
+        values, _ = torch.max(
+            output * kwargs.get("attention_mask").unsqueeze(-1), dim=1
+        )
+        values = torch.log1p(torch.relu(values))
+        if self.use_l0:
+            values = torch.log1p(values)
         if self.prune_ratio is None:
             return values
         else:
@@ -77,9 +121,7 @@ class SparseModel(torch.nn.Module):
     def _encode_inf_free(self, **kwargs):
         input_ids = kwargs.get("input_ids")
         batch_size = input_ids.shape[0]
-        out = torch.zeros(
-            batch_size, self.tokenizer.vocab_size, device=input_ids.device
-        )
+        out = torch.zeros(batch_size, self.vocab_size, device=input_ids.device)
         out[torch.arange(batch_size).unsqueeze(-1), input_ids] = 1
         out[:, self.special_token_ids] = 0
         return out * torch.relu(self.idf_vector)
@@ -88,7 +130,7 @@ class SparseModel(torch.nn.Module):
 class SparsePostProcessor(object):
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
-        self.id_to_token = ["" for i in range(tokenizer.vocab_size)]
+        self.id_to_token = ["" for i in range(len(tokenizer.vocab) + 100)]
         for token, _id in tokenizer.vocab.items():
             self.id_to_token[_id] = token
 
@@ -116,10 +158,10 @@ class SparseEncoder:
         self.do_count = do_count
         self.max_length = max_length
         self.device = self.model.backbone.device
-        self.count_tensor = torch.zeros(self.tokenizer.vocab_size).to(self.device)
+        self.count_tensor = torch.zeros(self.model.vocab_size).to(self.device)
 
     def reset_count(self):
-        self.count_tensor = torch.zeros(self.tokenizer.vocab_size).to(self.device)
+        self.count_tensor = torch.zeros(self.model.vocab_size).to(self.device)
 
     def encode(self, texts, inf_free=False):
         features = self.tokenizer(
@@ -139,16 +181,14 @@ class SparseEncoder:
         return output
 
 
-def sparse_embedding_to_query(token_weight_map, field_name="text_sparse"):
-    clause_list = []
-    for token, weight in token_weight_map.items():
-        clause_list.append(
-            {
-                "rank_feature": {
-                    "field": f"{field_name}.{token}",
-                    "boost": weight,
-                    "linear": {},
-                }
-            }
-        )
-    return {"bool": {"should": clause_list}}
+def sparse_embedding_to_query(
+    token_weight_map, field_name="text_sparse", query_prune=0
+):
+    if query_prune > 0:
+        thresh = max(token_weight_map.values()) * query_prune
+        token_weight_map = {
+            token: weight
+            for token, weight in token_weight_map.items()
+            if weight > thresh
+        }
+    return {"neural_sparse": {field_name: {"query_tokens": token_weight_map}}}

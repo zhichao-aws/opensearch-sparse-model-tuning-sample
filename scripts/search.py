@@ -4,7 +4,7 @@ import torch
 from tqdm import tqdm
 
 from .model.sparse_encoders import SparseModel, SparseEncoder, sparse_embedding_to_query
-from .data.dataset import KeyValueDataset
+from .dataset.dataset import KeyValueDataset
 from .utils import batch_search, get_os_client
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,27 @@ async def search(
     result_size: int = 15,
     inf_free: bool = True,
     delete: bool = False,
+    use_two_phase: bool = False,
+    query_prune: float = 0,
+    return_text: bool = False,
 ):
+    if use_two_phase:
+        client = get_os_client()
+        client.transport.perform_request(
+            "PUT",
+            "/_search/pipeline/neural_search_pipeline",
+            body={
+                "request_processors": [
+                    {
+                        "neural_sparse_two_phase_processor": {
+                            "tag": "neural-sparse",
+                            "description": "This processor creates a neural sparse two-phase processor, which can speed up neural sparse queries!",
+                        }
+                    }
+                ]
+            },
+        )
+
     os.makedirs(out_dir, exist_ok=True)
 
     queries_dataset = KeyValueDataset(queries)
@@ -42,14 +62,18 @@ async def search(
             endpoint_lambda=lambda index_name: f"""http://localhost:9200/{index_name}/_search""",
             get_query_lambda=lambda query: {
                 "size": result_size,
-                "query": sparse_embedding_to_query(query),
-                "_source": ["id"],
+                "query": sparse_embedding_to_query(query, query_prune=query_prune),
+                "_source": ["id", "text"],
             },
             interval=0.001,
+            use_two_phase=use_two_phase,
         )
 
         for i, (_id, res) in enumerate(zip(ids, search_results)):
-            run_res[_id] = {hit["_source"]["id"]: hit["_score"] for hit in res}
+            if return_text:
+                run_res[_id] = [hit["_source"]["text"] for hit in res]
+            else:
+                run_res[_id] = {hit["_source"]["id"]: hit["_score"] for hit in res}
 
     for query_id, doc_dict in run_res.items():
         if query_id in doc_dict:

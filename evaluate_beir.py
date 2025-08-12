@@ -1,50 +1,25 @@
-import torch.utils
-import torch.utils.data
 import yaml
 import logging
 import os
 import json
-import random
-import sys
 import torch
-from dataclasses import dataclass, field, asdict
-from typing import Optional
-from tqdm import tqdm
+from dataclasses import asdict
 
 import pandas as pd
 import asyncio
 
-from scripts.model.sparse_encoders import (
-    SparseModel,
-    SparseEncoder,
-    sparse_embedding_to_query,
-)
-from scripts.data.dataset import BEIRCorpusDataset, KeyValueDataset
+from scripts.dataset.dataset import BEIRCorpusDataset
 from scripts.ingest import ingest
 from scripts.search import search
-from scripts.utils import get_os_client, batch_search, set_logging, get_model
-from scripts.args import ModelArguments, DataTrainingArguments, parse_args
+from scripts.utils import set_logging, get_model
+from scripts.args import parse_args
 
-import transformers
 from transformers import (
-    AutoConfig,
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    DataCollatorWithPadding,
-    EvalPrediction,
-    HfArgumentParser,
-    PretrainedConfig,
-    Trainer,
-    TrainingArguments,
-    default_data_collator,
     set_seed,
 )
-from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import check_min_version, send_example_telemetry
-from transformers.utils.versions import require_version
 
 from accelerate import Accelerator
-from beir import LoggingHandler, util
+from beir import util
 from beir.datasets.data_loader import GenericDataLoader
 from beir.retrieval.evaluation import EvaluateRetrieval
 
@@ -59,11 +34,14 @@ def main():
         "data_args": asdict(data_args),
         "training_args": asdict(training_args),
     }
-    beir_eval_dir = os.path.join(training_args.output_dir, "beir_eval")
+    eval_output_dir = (
+        "beir_eval"
+        if model_args.prune_ratio is None
+        else f"beir_eval_{model_args.prune_ratio}"
+    )
+    beir_eval_dir = os.path.join(training_args.output_dir, eval_output_dir)
     os.makedirs(beir_eval_dir, exist_ok=True)
-    with open(
-        os.path.join(training_args.output_dir, "beir_eval", "config.yaml"), "w"
-    ) as file:
+    with open(os.path.join(beir_eval_dir, "config.yaml"), "w") as file:
         yaml.dump(args_dict, file, sort_keys=False)
 
     set_logging(training_args, "eval_beir.log")
@@ -96,20 +74,21 @@ def main():
             split="test"
         )
 
-        asyncio.run(
-            ingest(
-                dataset=BEIRCorpusDataset(corpus=corpus),
-                model=model,
-                out_dir=beir_eval_dir,
-                index_name=dataset,
-                accelerator=accelerator,
-                max_length=data_args.max_seq_length,
-                batch_size=training_args.per_device_eval_batch_size,
+        if not data_args.skip_ingest:
+            asyncio.run(
+                ingest(
+                    dataset=BEIRCorpusDataset(corpus=corpus),
+                    model=model,
+                    out_dir=beir_eval_dir,
+                    index_name=dataset,
+                    accelerator=accelerator,
+                    max_length=data_args.max_seq_length,
+                    batch_size=training_args.per_device_eval_batch_size,
+                )
             )
-        )
 
         # search is only run on main process
-        if accelerator.is_local_main_process:
+        if data_args.do_search and accelerator.is_local_main_process:
             search_result = asyncio.run(
                 search(
                     queries=queries,
@@ -119,6 +98,8 @@ def main():
                     max_length=data_args.max_seq_length,
                     batch_size=training_args.per_device_eval_batch_size,
                     inf_free=model_args.inf_free,
+                    use_two_phase=data_args.use_two_phase,
+                    query_prune=data_args.query_prune,
                 )
             )
 
@@ -133,12 +114,32 @@ def main():
 
         accelerator.wait_for_everyone()
 
-    if accelerator.is_local_main_process:
+    if data_args.do_search and accelerator.is_local_main_process:
         df = pd.DataFrame(result)
         for key in ["flops", "q_length", "d_length", "NDCG@10"]:
             avg_res[key] = sum(result[key]) / len(result[key])
-        df.to_csv(os.path.join(beir_eval_dir, "beir_statictics.csv"))
-        with open(os.path.join(beir_eval_dir, "avg_res.json"), "w") as f:
+
+        suffix = "_2p" if data_args.use_two_phase else ""
+        suffix = suffix + (
+            f"_{data_args.query_prune}" if data_args.query_prune > 0 else ""
+        )
+        suffix = suffix + (
+            f"_{data_args.max_seq_length}" if data_args.max_seq_length != 512 else ""
+        )
+
+        df.to_csv(
+            os.path.join(
+                beir_eval_dir,
+                f"beir_statictics{suffix}.csv",
+            )
+        )
+        with open(
+            os.path.join(
+                beir_eval_dir,
+                f"avg_res{suffix}.json",
+            ),
+            "w",
+        ) as f:
             json.dump(avg_res, f)
 
 

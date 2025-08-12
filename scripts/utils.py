@@ -57,14 +57,22 @@ def get_model(model_args):
         idf=idf,
         tokenizer_id=model_args.tokenizer_name,
         idf_requires_grad=model_args.idf_requires_grad,
+        prune_ratio=model_args.prune_ratio,
+        preprocess_func=model_args.preprocess_func,
+        use_l0=model_args.use_l0,
     )
 
     return model
 
 
-async def do_search(session, endpoint, query_body, post_process=None):
+async def do_search(
+    session, endpoint, query_body, post_process=None, use_two_phase=False
+):
     url = endpoint
     body = query_body
+
+    if use_two_phase:
+        url = url + "?search_pipeline=neural_search_pipeline"
 
     async with session.get(url, json=body, verify_ssl=False) as resp:
         response = await resp.json()
@@ -97,6 +105,7 @@ async def batch_search(
     get_query_lambda,
     post_process=None,
     interval=0.01,
+    use_two_phase=False,
 ):
     timeout = ClientTimeout(total=60)
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -109,6 +118,7 @@ async def batch_search(
                         endpoint_lambda(index_name),
                         get_query_lambda(query),
                         post_process=post_process,
+                        use_two_phase=use_two_phase,
                     )
                 )
             )

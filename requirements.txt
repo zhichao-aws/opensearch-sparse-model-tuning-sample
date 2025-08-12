@@ -1,0 +1,17 @@
+--index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0
+--index-url https://pypi.org/simple
+transformers==4.51.3
+datasets==3.5.0
+accelerate==1.6.0
+numpy==2.0.2
+opensearch-py==2.8.0
+beir==2.1.0
+ipykernel
+boto3
+uvicorn
+fastapi
+pydantic
+matplotlib>=3.5.0
+pandas>=1.3.0
+seaborn>=0.11.0

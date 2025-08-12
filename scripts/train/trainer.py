@@ -1,12 +1,11 @@
 import os
 import logging
 import torch
-import math
 
 from ..model.sparse_encoders import SparseModel
-from .bi_encoder_wrapper import BiEncoderWrapper
+from .bi_encoder_wrapper import BiEncoderWrapper, RemoteModel
 from ..utils import gather_rep
-from ..data.dataset import CombinedRandomSampler, CombinedDataset
+from ..dataset.dataset import CombinedRandomSampler, CombinedDataset
 
 from transformers import Trainer
 from transformers.trainer_utils import seed_worker
@@ -63,7 +62,15 @@ class SparseModelTrainer(Trainer):
         # representation size: (ndevice * batch_size) * vocab_dim
         # group num: how many semantic similar documents representations in one batch
         representation = representation.reshape(-1, group_num, representation.shape[-1])
-        return torch.sum(torch.mean(torch.abs(representation), dim=0) ** 2)
+        if self.data_args.flops_threshold is None:
+            return torch.sum(torch.mean(torch.abs(representation), dim=0) ** 2)
+        else:
+            w_j_per_doc = torch.abs(representation)  # N, vocab_dim
+            doc_length = torch.norm(w_j_per_doc, p=0, dim=2)  # N
+            mask = (doc_length > self.data_args.flops_threshold).float()  # N
+            mask = mask.unsqueeze(2).repeat(1, 1, w_j_per_doc.shape[2])  # N, vocab_dim
+            flops_per_average_token = torch.mean(mask * w_j_per_doc, dim=0) ** 2
+            return torch.sum(flops_per_average_token)
 
     def get_lambda(self, lambda_value, lambda_T):
         if self.state.global_step >= lambda_T:
@@ -71,7 +78,9 @@ class SparseModelTrainer(Trainer):
         step = self.state.global_step + 1
         return lambda_value * (step / lambda_T) ** 2
 
-    def compute_loss(self, model: SparseModel, inputs, return_outputs=False):
+    def compute_loss(
+        self, model: SparseModel, inputs, return_outputs=False, num_items_in_batch=None
+    ):
         if hasattr(self, "bi_encoder_teacher"):
             scores = self.bi_encoder_teacher.get_scores_batch(
                 q_features_list=inputs["query"][1:], d_features_list=inputs["docs"][1:]
@@ -88,28 +97,12 @@ class SparseModelTrainer(Trainer):
             "attention_mask": inputs["docs"][0]["attention_mask"],
         }
 
-        lelu_alpha = 0
-        if self.data_args.lelu_alpha is not None:
-            assert self.data_args.lelu_alpha_steps is not None
-            lelu_alpha = (
-                0
-                if self.state.global_step >= self.data_args.lelu_alpha_steps
-                else self.data_args.lelu_alpha
-                * (1 - (self.state.global_step / self.data_args.lelu_alpha_steps))
-            )
-            self.accelerator.unwrap_model(self.model).sparse_model.lelu_alpha = (
-                lelu_alpha
-            )
-
         d_rep, q_rep = model(model_wrapper_input)
         d_rep = gather_rep(d_rep, self.accelerator)
         q_rep = gather_rep(q_rep, self.accelerator)
         if "scores" in inputs:
             inputs["scores"] = gather_rep(inputs["scores"], self.accelerator)
-        d_flops = self.flops_value(
-            torch.relu(d_rep - math.log(1 + lelu_alpha)),
-            d_rep.shape[0] // q_rep.shape[0],
-        )
+        d_flops = self.flops_value(d_rep, d_rep.shape[0] // q_rep.shape[0])
         flops_loss += d_flops * self.get_lambda(
             self.data_args.flops_d_lambda, self.data_args.flops_d_T
         )
@@ -136,8 +129,13 @@ class SparseModelTrainer(Trainer):
 
         if self.state.global_step % self.args.logging_steps == 0:
             logger.info(
-                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep>math.log(1 + lelu_alpha)).sum()/d_rep.shape[0]}"
+                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep>0).sum()/d_rep.shape[0]}"
             )
+            with torch.no_grad():
+                nonzero = d_rep[d_rep > 0]
+                logger.info(
+                    f"nonzero entries: {torch.mean(nonzero)} {torch.mean(nonzero)} {torch.max(nonzero)}"
+                )
         # DP reduce grad by sum, while DDP reduce grad by mean
         # scale the loss to fix the gap
         loss = loss * self.accelerator.num_processes
@@ -157,7 +155,7 @@ class SparseModelTrainer(Trainer):
                 safe_serialization=self.args.save_safetensors,
             )
 
-    def set_bi_encoder_teacher(self):
+    def set_bi_encoder_teacher(self, embedding_service=None):
         self.bi_encoder_teacher = BiEncoderWrapper(
             types=self.data_args.kd_ensemble_teacher_kwargs["types"],
             model_ids=self.data_args.kd_ensemble_teacher_kwargs["model_ids"],
@@ -165,9 +163,12 @@ class SparseModelTrainer(Trainer):
             score_scale=self.data_args.kd_ensemble_teacher_kwargs.get(
                 "score_scale", 30
             ),
+            embedding_service=embedding_service,
         )
         self.bi_encoder_teacher.accelerator = self.accelerator
         for i, model in enumerate(self.bi_encoder_teacher.models):
+            if isinstance(model, RemoteModel):
+                continue
             self._move_model_to_device(model, self.args.device)
             self.bi_encoder_teacher.models[i] = self._wrap_model(model, training=False)
             use_accelerator_prepare = (

@@ -1,43 +1,35 @@
-> **Note:** This sample works with OpenSearch Project. We encourage you to join the [public Slack](https://opensearch.org/slack.html) for questions.
-> 
-> **News:** Switch to the [l0_enhance](https://github.com/zhichao-aws/opensearch-sparse-model-tuning-sample/tree/l0_enhance) branch of this repository to explore our implementation of the paper ["[SIGIR 2025] Exploring $\ell_0$ Sparsification for Inference-free Sparse Retrievers"](https://arxiv.org/abs/2504.14839)!<div>
-    <p>
-        <a href='https://arxiv.org/abs/2504.14839'><img src='https://img.shields.io/badge/arXiv-2504.14839-b31b1b'></a>
-        <a href='https://opensearch.org/slack.html'><img src='https://img.shields.io/badge/Slack-Join-green'></a>
-        <a href='https://huggingface.co/opensearch-project/opensearch-neural-sparse-encoding-doc-v3-distill'><img src='https://img.shields.io/badge/Hugging%20Face-Model%20Weights-blue'></a>
-    </p>
-</div>
-
-# Process of fine-tuning neural-sparse model on customized dataset
-
 ## Prepare the environment
 
 ### Conda environment
 ```
-conda create -n neural-sparse python=3.9
-conda activate neural-sparse
-conda install pytorch==1.11.0 cudatoolkit=10.2 -c pytorch
-conda install numpy==1.26.4
-pip install accelerate==1.0.0 transformers==4.44.1 datasets==3.0.1 opensearch-py beir
+conda create -n neural-sparse-mdbert python=3.9
+conda activate neural-sparse-mdbert
+pip install -r requirements.txt
 ```
 
 ### OpenSearch service
 To evaluate search relevance or mine hard negatives, run an OpenSearch node at local device. It can be accessed at `http://localhost:9200` without username/password(security disabled). For more details, please check [OpenSearch doc](https://opensearch.org/docs/latest/install-and-configure/install-opensearch/tar/). Here are steps to start a node without security:
 1. Follow the step1 and step2 in above documentation.
-2. Modify `/path/to/opensearch-2.16.0/config/opensearch.yml`, add this line: `plugins.security.disabled: true`.
-3. Modify `/path/to/opensearch-2.16.0/config/jvm.options`, set `-Xms32g` and `-Xmx32g`.
-4. Start a tmux session so the OpenSearch won't stop after the terminal is close `tmux new -s opensearch`. In the tmux session, run `cd /path/to/opensearch-2.16.0` and `./bin/opensearch`.
-5. The service is running. Run `curl -X GET http://localhost:9200` to test.
+2. Modify `/path/to/opensearch-2.16.0/config/opensearch.yml`, add this line: `plugins.security.disabled: true`
+3. Start a tmux session so the OpenSearch won't stop after the terminal is close `tmux new -s opensearch`. In the tmux session, run `cd /path/to/opensearch-2.16.0` and `./bin/opensearch`.
+4. The sevice is running. Run `curl -X GET http://localhost:9200` to test.
+
+### An example of reproducing an L0-enhanced inf-free model
+Here is an example of reproducing an [L0-enhanced inf-free model](https://arxiv.org/abs/2504.14839).
+```
+python prepare_msmarco_hard_negatives.py
+bash run_train_eval.sh config_l0.yaml
+```
 
 ### An example of fine-tuning on BEIR scifact
-Here is an example of fine-tuning the `opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill` model at BEIR scifact.
+Here is an example of fine-tuning the `opensearch-project/opensearch-neural-sparse-encoding-doc-v2-mini` model at BEIR scifact.
 
 1. Generate training data.
    1. `python demo_train_data.py`(data parallel) or `torchrun --nproc_per_node=${N_DEVICES} demo_train_data.py`(distributed data parallel) with configs.
-   2. This will generate training data of hard negatives at `data/scifact_train`
+   2. This will generate training data of hard negatives at `data/scifact_train.jsonl`
 ```
 torchrun --nproc_per_node=${N_DEVICES} demo_train_data.py \
-  --model_name_or_path opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill \
+  --model_name_or_path opensearch-project/opensearch-neural-sparse-encoding-doc-v2-mini \
   --inf_free true \
   --idf_path idf.json \
   --beir_dir data/beir \
@@ -46,7 +38,7 @@ torchrun --nproc_per_node=${N_DEVICES} demo_train_data.py \
 2. Run training.
    1. `python train_ir.py {config_file}`(data parallel) or `torchrun --nproc_per_node=${N_DEVICES} train_ir.py config.yaml`(distributed data parallel)
    2. If training using infoNCE loss, use config_infonce.yaml
-   3. If training using ensemble teacher models, using config_kd.yaml
+   3. If training using ensembled teacher models, using config_kd.yaml
 3. Run evaluation on the test set.
 ```
 for step in {500,1000,1500,2000}
@@ -64,7 +56,7 @@ done
 ```
 
 ## Run with infoNCE loss
-Training with infoNCE loss. It pushes the model generates higher scores for the positive pairs than all other pairs.
+Training with infoNCE loss. It pushes the model generates higher scores for the positive pairs than all other pairs. The training mode should be `infonce`.
 
 ```
 python train_ir.py config_infonce.yaml
@@ -76,7 +68,7 @@ N_DEVICES=8
 torchrun --nproc_per_node=${N_DEVICES} train_ir.py config_infonce.yaml
 ```
 
-Data file is a datasets.Dataset, each sample is an object like this:
+Data file is a jsonl file, each line is a data sample like this:
 ```json
 {
     "query":"xxx xxx xxx",
@@ -86,7 +78,7 @@ Data file is a datasets.Dataset, each sample is an object like this:
 ```
 
 ## Run with knowledge distillation (ensemble teachers)
-To ensemble dense and sparse teachers to generate supervisory signals for knowledge distillation. The supervisory signals are generated dynamically during training.
+To ensemble dense and sparse teachers to generate superversary signals for knowledge distillation. The training_mode should be `kd-ensemble`. The superverary signals are generated dynamically during training.
 
 Run with data parallel:
 ```
@@ -102,9 +94,9 @@ torchrun --nproc_per_node=${N_DEVICES} train_ir.py config_kd.yaml
 The data file has the same format as training with infoNCE.
 
 ## Run with knowledge distillation (scores pre-computed)
-For expensive teacher models like LLM or cross-encoders, we can calculate the scores in advance and store the scores. To run with pre-computed KD scores, use_in_batch_negatives should be set to false.
+For expensive teacher models like LLM or cross-encoders, we can calculate the scores in advance and store the scores. To run with pre-computed KD scores, The training_mode should be `kd`.
 
-Data file is a datasets.Dataset, each sample is an object like this:
+Data file is a jsonl file, each line is a data sample like this:
 ```json
 {
     "query":"xxx xxx xxx",
@@ -112,20 +104,3 @@ Data file is a datasets.Dataset, each sample is an object like this:
     "scores": [1.0, 5.0, 9.0, 4.4]
 }
 ```
-
-## Related read
-[Towards Competitive Search Relevance For Inference-Free Learned Sparse Retrievers](https://arxiv.org/abs/2411.04403)
-```
-@misc{geng2024competitivesearchrelevanceinferencefree,
-      title={Towards Competitive Search Relevance For Inference-Free Learned Sparse Retrievers}, 
-      author={Zhichao Geng and Dongyu Ru and Yang Yang},
-      year={2024},
-      eprint={2411.04403},
-      archivePrefix={arXiv},
-      primaryClass={cs.IR},
-      url={https://arxiv.org/abs/2411.04403}, 
-}
-```
-
-## COPYRIGHT
-Copyright opensearch-sparse-model-tuning-sample Contributors.
