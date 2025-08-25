@@ -31,3 +31,4 @@ save_strategy: steps
 save_steps: 500
 dataloader_drop_last: true
 max_grad_norm: null
+beir_datasets: scifact

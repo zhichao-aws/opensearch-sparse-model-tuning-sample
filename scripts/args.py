@@ -10,11 +10,13 @@ miracl_datasets = "bn,te,es,fr,id,hi,ru,ar,zh,fa,ja,fi,sw,ko,en"
 tydi_datasets = (
     "arabic,bengali,english,finnish,indonesian,japanese,korean,russian,swahili,telugu"
 )
+nano_beir_datasets = "NanoClimateFEVER,NanoDBPedia,NanoFEVER,NanoFiQA2018,NanoHotpotQA,NanoNFCorpus,NanoNQ,NanoQuoraRetrieval,NanoSCIDOCS,NanoArguAna,NanoSciFact,NanoTouche2020"
 
 
 @dataclass
 class DataTrainingArguments:
     max_seq_length: int = field(default=512)
+    eval_max_seq_length: int = field(default=512)
     train_file: Optional[str] = field(default=None)
     train_file_dir: Optional[str] = field(default=None)
     data_type: Optional[str] = field(default="kd")

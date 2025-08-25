@@ -44,7 +44,7 @@ def main():
         ingest(
             dataset=BEIRCorpusDataset(corpus=corpus),
             model=model,
-            out_dir="tmp/out",
+            out_dir="output/tmp",
             index_name=dataset,
             accelerator=accelerator,
             max_length=data_args.max_seq_length,
@@ -57,7 +57,7 @@ def main():
             search(
                 queries=queries,
                 model=model,
-                out_dir="tmp/out",
+                out_dir="output/tmp",
                 index_name=dataset,
                 max_length=data_args.max_seq_length,
                 batch_size=50,
