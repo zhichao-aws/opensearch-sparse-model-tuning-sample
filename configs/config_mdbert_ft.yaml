@@ -29,6 +29,6 @@ weight_decay: 0.01
 lr_scheduler_type: linear
 warmup_steps: 6000
 save_strategy: steps
-save_steps: 100000
+save_steps: 50000
 dataloader_drop_last: true
 max_grad_norm: null
