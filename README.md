@@ -18,7 +18,7 @@ To evaluate search relevance or mine hard negatives, run an OpenSearch node at l
 Here is an example of reproducing an [L0-enhanced inf-free model](https://arxiv.org/abs/2504.14839).
 ```
 python prepare_msmarco_hard_negatives.py
-bash run_train_eval.sh config_l0.yaml
+bash run_train_eval.sh configs/config_l0.yaml
 ```
 
 ### An example of fine-tuning on BEIR scifact
@@ -37,8 +37,8 @@ torchrun --nproc_per_node=${N_DEVICES} demo_train_data.py \
 ```
 2. Run training.
    1. `python train_ir.py {config_file}`(data parallel) or `torchrun --nproc_per_node=${N_DEVICES} train_ir.py config.yaml`(distributed data parallel)
-   2. If training using infoNCE loss, use config_infonce.yaml
-   3. If training using ensembled teacher models, using config_kd.yaml
+   2. If training using infoNCE loss, use configs/config_infonce.yaml
+   3. If training using ensembled teacher models, using configs/config_kd.yaml
 3. Run evaluation on the test set.
 ```
 for step in {500,1000,1500,2000}
@@ -59,13 +59,13 @@ done
 Training with infoNCE loss. It pushes the model generates higher scores for the positive pairs than all other pairs. The training mode should be `infonce`.
 
 ```
-python train_ir.py config_infonce.yaml
+python train_ir.py configs/config_infonce.yaml
 ```
 Run with distributed data parallel:
 ```
 # the number of GPU
 N_DEVICES=8
-torchrun --nproc_per_node=${N_DEVICES} train_ir.py config_infonce.yaml
+torchrun --nproc_per_node=${N_DEVICES} train_ir.py configs/config_infonce.yaml
 ```
 
 Data file is a jsonl file, each line is a data sample like this:
@@ -82,13 +82,13 @@ To ensemble dense and sparse teachers to generate superversary signals for knowl
 
 Run with data parallel:
 ```
-python train_ir.py config_kd.yaml
+python train_ir.py configs/config_kd.yaml
 ```
 Run with distributed data parallel:
 ```
 # the number of GPU
 N_DEVICES=8
-torchrun --nproc_per_node=${N_DEVICES} train_ir.py config_kd.yaml
+torchrun --nproc_per_node=${N_DEVICES} train_ir.py configs/config_kd.yaml
 ```
 
 The data file has the same format as training with infoNCE.

@@ -8,7 +8,7 @@ torchrun --nproc_per_node=${N_DEVICES} demo_train_data.py \
   --beir_dir data/beir \
   --beir_datasets scifact
 
-torchrun --nproc_per_node=${N_DEVICES} train_ir.py config_infonce.yaml
+torchrun --nproc_per_node=${N_DEVICES} train_ir.py configs/config_infonce.yaml
 
 for step in {500,1000,1500,2000}
 do
