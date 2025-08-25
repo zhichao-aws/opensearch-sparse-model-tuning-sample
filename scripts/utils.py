@@ -147,6 +147,9 @@ def get_logger_console(name):
 
 
 def emit_metrics(metrics, index_name, doc_id):
+    if "id" not in metrics:
+        metrics["id"] = doc_id
+
     client = OpenSearch(
         hosts=[os.getenv("OS_URL", "http://localhost:9200")],
         http_auth=(
