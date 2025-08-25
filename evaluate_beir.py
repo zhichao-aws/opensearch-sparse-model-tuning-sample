@@ -3,6 +3,7 @@ import logging
 import os
 import json
 import sys
+from datetime import datetime
 from dataclasses import asdict
 from datasets import load_dataset
 from typing import Dict, Tuple
@@ -13,7 +14,7 @@ import asyncio
 from scripts.dataset.dataset import BEIRCorpusDataset
 from scripts.ingest import ingest
 from scripts.search import search
-from scripts.utils import set_logging, get_model
+from scripts.utils import set_logging, get_model, emit_metrics
 from scripts.args import parse_args, nano_beir_datasets
 from scripts.dataset.data_utils import cached
 
@@ -196,23 +197,33 @@ def evaluate_beir(model_args, data_args, training_args, model, accelerator):
 
     if data_args.do_search and accelerator.is_local_main_process:
         df = pd.DataFrame(result)
-        for key in ["flops", "q_length", "d_length", "NDCG@10"]:
-            avg_res[key] = sum(result[key]) / len(result[key])
+        avg_res = {
+            key: sum(result[key]) / len(result[key])
+            for key in ["flops", "q_length", "d_length", "NDCG@10"]
+        }
 
-        df.to_csv(
-            os.path.join(
-                beir_eval_dir,
-                f"beir_statictics.csv",
-            )
-        )
-        with open(
-            os.path.join(
-                beir_eval_dir,
-                f"avg_res.json",
-            ),
-            "w",
-        ) as f:
+        df.to_csv(os.path.join(beir_eval_dir, "beir_statictics.csv"))
+        with open(os.path.join(beir_eval_dir, "avg_res.json"), "w") as f:
             json.dump(avg_res, f)
+
+        doc_id = training_args.output_dir + suffix
+        timestamp = datetime.now().timestamp()
+
+        metrics = {
+            "flops": avg_res["flops"],
+            "NDCG@10": avg_res["NDCG@10"],
+            "q_length": avg_res["q_length"],
+            "d_length": avg_res["d_length"],
+            "timestamp": timestamp,
+            "dataset_number": len(datasets),
+        }
+        emit_metrics(metrics, "beir_eval", doc_id)
+
+        metrics = {
+            "records": df.to_dict(orient="records"),
+            "timestamp": timestamp,
+        }
+        emit_metrics(metrics, "beir_eval_records", doc_id)
 
 
 def evaluate_nano_beir(model_args, data_args, training_args, model, accelerator, step):
@@ -277,8 +288,10 @@ def evaluate_nano_beir(model_args, data_args, training_args, model, accelerator,
     if data_args.do_search and accelerator.is_local_main_process:
         df = pd.DataFrame(result)
 
-        for key in ["flops", "q_length", "d_length", "NDCG@10"]:
-            avg_res[key] = sum(result[key]) / len(result[key])
+        avg_res = {
+            key: sum(result[key]) / len(result[key])
+            for key in ["flops", "q_length", "d_length", "NDCG@10"]
+        }
 
         df.to_csv(
             os.path.join(
@@ -294,6 +307,25 @@ def evaluate_nano_beir(model_args, data_args, training_args, model, accelerator,
             "w",
         ) as f:
             json.dump(avg_res, f)
+
+        doc_id = training_args.output_dir + suffix + f"_step{step}"
+        timestamp = datetime.now().timestamp()
+
+        metrics = {
+            "flops": avg_res["flops"],
+            "NDCG@10": avg_res["NDCG@10"],
+            "q_length": avg_res["q_length"],
+            "d_length": avg_res["d_length"],
+            "timestamp": timestamp,
+            "dataset_number": len(nano_beir_datasets.split(",")),
+        }
+        emit_metrics(metrics, "nano_beir_eval", doc_id)
+
+        metrics = {
+            "records": df.to_dict(orient="records"),
+            "timestamp": timestamp,
+        }
+        emit_metrics(metrics, "nano_beir_eval_records", doc_id)
 
 
 def main():
@@ -337,9 +369,13 @@ def main():
         model_args.model_name_or_path = os.path.join(training_args.output_dir, file)
         model_args.tokenizer_name = model_args.model_name_or_path
         if model_args.idf_requires_grad:
-            model_args.idf_path = os.path.join(model_args.model_name_or_path, "idf.json")
+            model_args.idf_path = os.path.join(
+                model_args.model_name_or_path, "idf.json"
+            )
         model = get_model(model_args)
-        evaluate_nano_beir(model_args, data_args, training_args, model, accelerator, step)
+        evaluate_nano_beir(
+            model_args, data_args, training_args, model, accelerator, step
+        )
 
 
 if __name__ == "__main__":

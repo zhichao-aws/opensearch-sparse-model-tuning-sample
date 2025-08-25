@@ -5,11 +5,12 @@ from aiohttp import ClientTimeout
 import json
 import logging
 import sys
-import torch
 import torch.distributed as dist
+from dotenv import load_dotenv
 
 from opensearchpy import OpenSearch
-from .model.sparse_encoders import SparseModel
+
+load_dotenv()
 
 
 def gather_rep(rep, accelerator):
@@ -47,6 +48,8 @@ def set_logging(training_args, log_file_name):
 
 
 def get_model(model_args):
+    from .model.sparse_encoders import SparseModel
+    
     idf = None
     if model_args.inf_free and model_args.idf_path:
         with open(model_args.idf_path) as f:
@@ -141,3 +144,17 @@ def get_logger_console(name):
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     return logger
+
+
+def emit_metrics(metrics, index_name, doc_id):
+    client = OpenSearch(
+        hosts=[os.getenv("OS_URL", "http://localhost:9200")],
+        http_auth=(
+            (os.getenv("OS_USERNAME"), os.getenv("OS_PASSWORD"))
+            if os.getenv("OS_USERNAME") and os.getenv("OS_PASSWORD")
+            else None
+        ),
+        verify_certs=False,
+        ssl_show_warn=False,
+    )
+    client.index(index=index_name, body=metrics, id=doc_id)
