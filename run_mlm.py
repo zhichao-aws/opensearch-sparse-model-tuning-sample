@@ -199,7 +199,7 @@ class DataTrainingArguments:
         },
     )
     preprocessing_num_workers: Optional[int] = field(
-        default=None,
+        default=30,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
     mlm_probability: float = field(
@@ -245,17 +245,14 @@ class DataTrainingArguments:
         if self.dataset_name is None and self.train_file is None and self.validation_file is None:
             raise ValueError("Need either a dataset name or a training/validation file.")
         else:
-            valid_exts = {"csv", "json", "txt", "jsonl"}
             if self.train_file is not None:
-                train_files = [p.strip() for p in self.train_file.split(",")] if "," in self.train_file else [self.train_file]
-                train_exts = {p.split(".")[-1] for p in train_files if p}
-                if not train_exts or not train_exts.issubset(valid_exts):
-                    raise ValueError("`train_file` should be csv, json, jsonl or txt files (comma-separated supported).")
+                extension = self.train_file.split(".")[-1]
+                if extension not in ["csv", "json", "txt", "jsonl"]:
+                    raise ValueError("`train_file` should be a csv, a json or a txt file.")
             if self.validation_file is not None:
-                valid_files = [p.strip() for p in self.validation_file.split(",")] if "," in self.validation_file else [self.validation_file]
-                valid_exts_found = {p.split(".")[-1] for p in valid_files if p}
-                if not valid_exts_found or not valid_exts_found.issubset(valid_exts):
-                    raise ValueError("`validation_file` should be csv, json, jsonl or txt files (comma-separated supported).")
+                extension = self.validation_file.split(".")[-1]
+                if extension not in ["csv", "json", "txt", "jsonl"]:
+                    raise ValueError("`validation_file` should be a csv, a json or a txt file.")
 
 
 def main():
@@ -359,42 +356,22 @@ def main():
             )
     else:
         data_files = {}
-        train_files_list = None
-        valid_files_list = None
         if data_args.train_file is not None:
-            train_files_list = [p.strip() for p in data_args.train_file.split(",")] if "," in data_args.train_file else [data_args.train_file]
-            data_files["train"] = train_files_list if len(train_files_list) > 1 else train_files_list[0]
+            data_files["train"] = data_args.train_file
+            extension = data_args.train_file.split(".")[-1]
         if data_args.validation_file is not None:
-            valid_files_list = [p.strip() for p in data_args.validation_file.split(",")] if "," in data_args.validation_file else [data_args.validation_file]
-            data_files["validation"] = valid_files_list if len(valid_files_list) > 1 else valid_files_list[0]
-
-        # Determine dataset builder type based on file extensions and ensure consistency across splits
-        def _map_ext_to_builder(ext: str) -> str:
-            if ext == "txt":
-                return "text"
-            if ext == "jsonl":
-                return "json"
-            return ext
-
-        all_files = []
-        if train_files_list is not None:
-            all_files.extend(train_files_list)
-        if valid_files_list is not None:
-            all_files.extend(valid_files_list)
-
-        if not all_files:
-            raise ValueError("No data files provided for loading.")
-
-        builder_types = {_map_ext_to_builder(p.split(".")[-1]) for p in all_files if p}
-        if len(builder_types) != 1:
-            raise ValueError(f"All provided files must share the same type. Found builder types: {sorted(builder_types)}")
-        extension = next(iter(builder_types))
-
+            data_files["validation"] = data_args.validation_file
+            extension = data_args.validation_file.split(".")[-1]
+        if extension == "txt":
+            extension = "text"
+        if extension == "jsonl":
+            extension = "json"
         raw_datasets = load_dataset(
             extension,
             data_files=data_files,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
+            streaming=data_args.streaming,
         )
 
         # If no validation data is there, validation_split_percentage will be used to divide the dataset.
@@ -405,6 +382,7 @@ def main():
                 split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                streaming=data_args.streaming,
             )
             raw_datasets["train"] = load_dataset(
                 extension,
@@ -412,6 +390,7 @@ def main():
                 split=f"train[{data_args.validation_split_percentage}%:]",
                 cache_dir=model_args.cache_dir,
                 token=model_args.token,
+                streaming=data_args.streaming,
             )
 
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
@@ -561,17 +540,16 @@ def main():
                 tokenized_datasets = raw_datasets.map(
                     tokenize_function,
                     batched=True,
+                    num_proc=data_args.preprocessing_num_workers,
                     remove_columns=[text_column_name],
                     load_from_cache_file=not data_args.overwrite_cache,
                     desc="Running tokenizer on dataset line_by_line",
-                    num_proc=30,
                 )
             else:
                 tokenized_datasets = raw_datasets.map(
                     tokenize_function,
                     batched=True,
                     remove_columns=[text_column_name],
-                    num_proc=30,
                 )
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
@@ -585,17 +563,16 @@ def main():
                 tokenized_datasets = raw_datasets.map(
                     tokenize_function,
                     batched=True,
+                    num_proc=data_args.preprocessing_num_workers,
                     remove_columns=column_names,
                     load_from_cache_file=not data_args.overwrite_cache,
                     desc="Running tokenizer on every text in dataset",
-                    num_proc=30,
                 )
             else:
                 tokenized_datasets = raw_datasets.map(
                     tokenize_function,
                     batched=True,
                     remove_columns=column_names,
-                    num_proc=30,
                 )
 
         # Main data processing function that will concatenate all texts from our dataset and generate chunks of
@@ -626,15 +603,14 @@ def main():
                 tokenized_datasets = tokenized_datasets.map(
                     group_texts,
                     batched=True,
+                    num_proc=data_args.preprocessing_num_workers,
                     load_from_cache_file=not data_args.overwrite_cache,
                     desc=f"Grouping texts in chunks of {max_seq_length}",
-                    num_proc=30,
                 )
             else:
                 tokenized_datasets = tokenized_datasets.map(
                     group_texts,
                     batched=True,
-                    num_proc=30,
                 )
 
     if training_args.do_train:
@@ -707,10 +683,14 @@ def main():
         trainer.save_model()  # Saves the tokenizer too for easy upload
         metrics = train_result.metrics
 
+        try:
+            len_train_dataset = len(train_dataset)
+        except:
+            len_train_dataset = 0
         max_train_samples = (
-            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+            data_args.max_train_samples if data_args.max_train_samples is not None else len_train_dataset
         )
-        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+        metrics["train_samples"] = min(max_train_samples, len_train_dataset)
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
