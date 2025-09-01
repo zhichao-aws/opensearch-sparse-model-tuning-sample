@@ -1,10 +1,11 @@
 import logging
 import os
+
 import torch
 from tqdm import tqdm
 
-from .model.sparse_encoders import SparseModel, SparseEncoder, sparse_embedding_to_query
 from .dataset.dataset import KeyValueDataset
+from .model.sparse_encoders import SparseEncoder, SparseModel, sparse_embedding_to_query
 from .utils import batch_search, get_os_client
 
 logger = logging.getLogger(__name__)

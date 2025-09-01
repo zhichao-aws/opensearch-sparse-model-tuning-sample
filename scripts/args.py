@@ -1,8 +1,8 @@
-import sys
 import os
-
+import sys
 from dataclasses import dataclass, field
-from typing import Optional, Union, List
+from typing import List, Optional, Union
+
 from transformers import HfArgumentParser, TrainingArguments
 
 beir_datasets = "trec-covid,nfcorpus,nq,hotpotqa,fiqa,arguana,webis-touche2020,dbpedia-entity,scidocs,fever,climate-fever,scifact,quora"

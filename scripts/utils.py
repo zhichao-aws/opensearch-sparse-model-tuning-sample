@@ -1,13 +1,13 @@
-import os
 import asyncio
-import aiohttp
-from aiohttp import ClientTimeout
 import json
 import logging
+import os
 import sys
-import torch.distributed as dist
-from dotenv import load_dotenv
 
+import aiohttp
+import torch.distributed as dist
+from aiohttp import ClientTimeout
+from dotenv import load_dotenv
 from opensearchpy import OpenSearch
 
 load_dotenv()
@@ -49,7 +49,7 @@ def set_logging(training_args, log_file_name):
 
 def get_model(model_args):
     from .model.sparse_encoders import SparseModel
-    
+
     idf = None
     if model_args.inf_free and model_args.idf_path:
         with open(model_args.idf_path) as f:
@@ -96,7 +96,7 @@ async def do_bulk(bulk_body, session, endpoint="http://localhost:9200"):
         response = await resp.json()
         if "errors" not in response:
             print(response)
-        assert response["errors"] == False
+        assert not response["errors"]
 
     return response
 

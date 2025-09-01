@@ -1,10 +1,10 @@
+import logging
 import os
-import requests
+
 import torch
 import transformers
-import numpy as np
+
 from scripts.utils import gather_rep
-import logging
 
 logger = logging.getLogger(__name__)
 

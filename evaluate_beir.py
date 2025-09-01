@@ -1,31 +1,27 @@
-import yaml
+import asyncio
+import json
 import logging
 import os
-import json
 import sys
-from datetime import datetime
 from dataclasses import asdict
-from datasets import load_dataset
+from datetime import datetime
 from typing import Dict, Tuple
 
 import pandas as pd
-import asyncio
-
-from scripts.dataset.dataset import BEIRCorpusDataset
-from scripts.ingest import ingest
-from scripts.search import search
-from scripts.utils import set_logging, get_model, emit_metrics
-from scripts.args import parse_args, nano_beir_datasets
-from scripts.dataset.data_utils import cached
-
+import yaml
+from accelerate import Accelerator
+from beir.retrieval.evaluation import EvaluateRetrieval
+from datasets import load_dataset
 from transformers import (
     set_seed,
 )
 
-from accelerate import Accelerator
-from beir import util
-from beir.datasets.data_loader import GenericDataLoader
-from beir.retrieval.evaluation import EvaluateRetrieval
+from scripts.args import nano_beir_datasets, parse_args
+from scripts.dataset.data_utils import cached
+from scripts.dataset.dataset import BEIRCorpusDataset
+from scripts.ingest import ingest
+from scripts.search import search
+from scripts.utils import emit_metrics, get_model, set_logging
 
 logger = logging.getLogger(__name__)
 

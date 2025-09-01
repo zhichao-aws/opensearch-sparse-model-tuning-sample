@@ -1,11 +1,12 @@
+import logging
 import os
 import threading
-import numpy as np
-import logging
-
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List
+
+import numpy as np
+
 from .dynamo_utils import batch_get_vectors
 
 logger = logging.getLogger(__name__)

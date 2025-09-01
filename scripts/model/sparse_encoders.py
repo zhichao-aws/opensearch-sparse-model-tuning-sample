@@ -1,7 +1,8 @@
-import torch
-import transformers
 import itertools
 import logging
+
+import torch
+import transformers
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ class SparseModel(torch.nn.Module):
                     f"reset the vocab size from {self.vocab_size} to {emb_vocab_size}"
                 )
                 self.vocab_size = emb_vocab_size
-        except:
+        except Exception:
             pass
 
         idf_vector = [1.0] * self.vocab_size

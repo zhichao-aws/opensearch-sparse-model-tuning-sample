@@ -1,21 +1,18 @@
+import asyncio
+import logging
 import os
 import os.path
 
-import asyncio
+import aiohttp
 import torch
-import logging
-
+from accelerate import Accelerator
+from aiohttp import ClientTimeout
+from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 
-from .model.sparse_encoders import SparseModel, SparseEncoder
-from .utils import do_bulk, get_os_client
 from .dataset.dataset import DDPDatasetWithRank
-from torch.utils.data import DataLoader, Dataset
-
-from accelerate import Accelerator
-
-import aiohttp
-from aiohttp import ClientTimeout
+from .model.sparse_encoders import SparseEncoder, SparseModel
+from .utils import do_bulk, get_os_client
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +57,7 @@ async def ingest(
         try:
             # delete the index if exist
             os_client.indices.delete(index_name)
-        except:
+        except Exception:
             pass
 
         os_client.indices.create(

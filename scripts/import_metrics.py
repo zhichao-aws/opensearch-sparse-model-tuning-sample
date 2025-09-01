@@ -1,8 +1,8 @@
-import os
-import sys
-import json
-import re
 import argparse
+import json
+import os
+import re
+import sys
 from datetime import datetime
 
 from utils import emit_metrics
@@ -35,7 +35,9 @@ def infer_index_and_doc_id_from_path(file_path: str, root_dir: str):
     if parent.startswith("nano_beir_eval"):
         if filename.startswith("avg_res_step") and filename.endswith(".json"):
             return "nano_beir_eval", base_doc_id
-        if filename.startswith("nano_beir_statictics_step") and filename.endswith(".csv"):
+        if filename.startswith("nano_beir_statictics_step") and filename.endswith(
+            ".csv"
+        ):
             return "nano_beir_eval_records", base_doc_id
 
     return None, None
@@ -48,7 +50,7 @@ def find_experiment_output_dir(file_path: str) -> str:
     for i, part in enumerate(parts):
         if part.startswith("beir_eval") or part.startswith("nano_beir_eval"):
             # output_dir is the parent of this part
-            return os.sep.join(parts[: i]) if i > 0 else os.sep
+            return os.sep.join(parts[:i]) if i > 0 else os.sep
     # default to parent of the file
     return os.path.dirname(os.path.dirname(file_path))
 
@@ -73,7 +75,9 @@ def read_last_timestamp_from_log(output_dir: str):
 
 
 def _extract_step_from_filename(filename: str):
-    m = re.search(r"(?:avg_res_step|nano_beir_statictics_step)(\d+)\.(?:json|csv)$", filename)
+    m = re.search(
+        r"(?:avg_res_step|nano_beir_statictics_step)(\d+)\.(?:json|csv)$", filename
+    )
     if m:
         return m.group(1)
     return None
@@ -110,7 +114,9 @@ def compute_dataset_number(index: str, file_path: str):
             # fallback: pick any matching csv if exists
             try:
                 for name in os.listdir(dir_path):
-                    if name.startswith("nano_beir_statictics_step") and name.endswith(".csv"):
+                    if name.startswith("nano_beir_statictics_step") and name.endswith(
+                        ".csv"
+                    ):
                         csv_path = os.path.join(dir_path, name)
                         break
             except Exception:
@@ -176,7 +182,9 @@ def emit_file(file_path: str, root_dir: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Import existing metrics into OpenSearch indices recursively")
+    parser = argparse.ArgumentParser(
+        description="Import existing metrics into OpenSearch indices recursively"
+    )
     parser.add_argument("dir", help="Root directory to scan recursively")
     args = parser.parse_args()
 
@@ -197,5 +205,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

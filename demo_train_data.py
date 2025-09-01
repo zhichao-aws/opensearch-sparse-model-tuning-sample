@@ -1,18 +1,17 @@
-import os
-import json
 import asyncio
+import os
 
+from accelerate import Accelerator
+from beir import util
+from beir.datasets.data_loader import GenericDataLoader
+from datasets import Dataset
+from transformers import HfArgumentParser
+
+from scripts.args import DataTrainingArguments, ModelArguments
 from scripts.dataset.dataset import BEIRCorpusDataset
 from scripts.ingest import ingest
 from scripts.search import search
 from scripts.utils import get_model
-from scripts.args import ModelArguments, DataTrainingArguments
-
-from datasets import Dataset
-from transformers import HfArgumentParser
-from accelerate import Accelerator
-from beir import util
-from beir.datasets.data_loader import GenericDataLoader
 
 
 def main():

@@ -1,28 +1,25 @@
-import yaml
 import logging
 import os
-import requests
 import sys
-import subprocess
-import time
 from dataclasses import asdict
 
-from scripts.train.trainer import SparseModelTrainer
-from scripts.train.loss import LOSS_CLS_MAP
+import yaml
+from torch.optim import AdamW
+from transformers import set_seed
+from transformers.optimization import get_linear_schedule_with_warmup
+
+from scripts.args import parse_args
+from scripts.async_embedding_server import EmbeddingService
+from scripts.dataset.collator import (
+    COLLATOR_CLS_MAP,
+)
 from scripts.dataset.dataset import (
     load_dataset,
     load_datasets,
 )
-from scripts.dataset.collator import (
-    COLLATOR_CLS_MAP,
-)
-from scripts.utils import set_logging, get_model
-from scripts.args import parse_args
-from scripts.async_embedding_server import EmbeddingService
-
-from torch.optim import AdamW
-from transformers import set_seed
-from transformers.optimization import get_linear_schedule_with_warmup
+from scripts.train.loss import LOSS_CLS_MAP
+from scripts.train.trainer import SparseModelTrainer
+from scripts.utils import get_model, set_logging
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +51,7 @@ def main():
     ):
         embedding_service = EmbeddingService()
         logger.info(embedding_service.health_check())
-        logger.info(f"embedding service has been started.")
+        logger.info("embedding service has been started.")
 
     # model
     model = get_model(model_args)
@@ -82,7 +79,7 @@ def main():
         )
 
     # optimizer
-    if model_args.idf_requires_grad == False or data_args.idf_lr is None:
+    if not model_args.idf_requires_grad or data_args.idf_lr is None:
         optimizer = AdamW(
             model.parameters(),
             lr=training_args.learning_rate,

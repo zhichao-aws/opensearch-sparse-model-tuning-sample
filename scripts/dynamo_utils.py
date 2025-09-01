@@ -1,6 +1,7 @@
+import time
+
 import boto3
 import numpy as np
-import time
 
 
 def batch_store_vectors_binary(
@@ -82,9 +83,7 @@ def batch_get_vectors(
 
     # Deduplicate text_id_list while preserving original index information
     unique_text_ids = []
-    original_to_unique_map = (
-        {}
-    )  # Mapping from original list index to deduplicated list index
+    original_to_unique_map = {}  # Mapping from original list index to deduplicated list index
 
     for idx, text_id in enumerate(text_id_list):
         if text_id not in original_to_unique_map:

@@ -1,16 +1,16 @@
-import os
+import json
 import logging
+import os
+
 import torch
-
-from ..model.sparse_encoders import SparseModel
-from .bi_encoder_wrapper import BiEncoderWrapper, RemoteModel
-from ..utils import gather_rep
-from ..dataset.dataset import CombinedRandomSampler, CombinedDataset
-
+from torch.utils.data import DataLoader
 from transformers import Trainer
 from transformers.trainer_utils import seed_worker
-from torch.utils.data import DataLoader
-import json
+
+from ..dataset.dataset import CombinedDataset, CombinedRandomSampler
+from ..model.sparse_encoders import SparseModel
+from ..utils import gather_rep
+from .bi_encoder_wrapper import BiEncoderWrapper, RemoteModel
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ class SparseModelTrainer(Trainer):
 
         if self.state.global_step % self.args.logging_steps == 0:
             logger.info(
-                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep>0).sum()/d_rep.shape[0]}"
+                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep > 0).sum() / d_rep.shape[0]}"
             )
             with torch.no_grad():
                 nonzero = d_rep[d_rep > 0]

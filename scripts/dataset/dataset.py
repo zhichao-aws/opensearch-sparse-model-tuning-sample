@@ -1,20 +1,19 @@
-import bisect
-import os
 import json
 import logging
+import os
 import random
-import itertools
-import numpy as np
-
-from ..utils import is_ddp_enabled
-
 from itertools import chain
-from tqdm import tqdm
-from datasets import load_dataset, Dataset as DatasetsDataset
+
+import numpy as np
 from beir import util
 from beir.datasets.data_loader import GenericDataLoader
+from datasets import Dataset as DatasetsDataset
+from datasets import load_dataset as datasets_load_dataset
 from torch.utils.data import Dataset
-from torch.utils.data.dataloader import DataLoader, Sampler, RandomSampler, BatchSampler
+from torch.utils.data.dataloader import BatchSampler, RandomSampler, Sampler
+from tqdm import tqdm
+
+from ..utils import is_ddp_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +288,7 @@ class MsMarcoKDDataset(KnowledgeDistillDataset):
     def transform_str(s):
         try:
             return s.encode("latin1").decode("utf-8")
-        except:
+        except Exception:
             return s
 
     def __init__(
@@ -297,7 +296,7 @@ class MsMarcoKDDataset(KnowledgeDistillDataset):
     ):
         if corpus is None or queries is None:
             assert score_dic_path is not None
-            beir_resource_url = f"https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/msmarco.zip"
+            beir_resource_url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/msmarco.zip"
             local_data_path = util.download_and_unzip(beir_resource_url, "data/beir/")
             corpus, queries, qrels = GenericDataLoader(
                 data_folder=local_data_path
@@ -361,7 +360,7 @@ class PosNegsDataset(Dataset):
 class MiraclTrainingDataset(Dataset):
     def __init__(self, lang="en", source="miracl/miracl", dataset=None):
         if dataset is None:
-            miracl = load_dataset(source, lang, trust_remote_code=True)
+            miracl = datasets_load_dataset(source, lang, trust_remote_code=True)
             self.dataset = miracl["train"]
         else:
             self.dataset = dataset

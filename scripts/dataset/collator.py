@@ -1,8 +1,7 @@
-import torch
 import itertools
 import logging
-import requests
 
+import torch
 import transformers
 
 logger = logging.getLogger(__name__)

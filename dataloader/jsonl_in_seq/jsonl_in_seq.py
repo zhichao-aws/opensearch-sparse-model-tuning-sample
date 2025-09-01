@@ -4,13 +4,13 @@
 # - Streaming mode (IterableDataset)
 # - On-the-fly split: validation takes 1% (every 100th line), train takes the rest
 
+import glob
 import gzip
 import json
 import os
-from typing import List, Iterator, Tuple
+from typing import Iterator, List, Tuple
 
 import datasets
-
 
 logger = datasets.logging.get_logger(__name__)
 
@@ -22,7 +22,10 @@ class JsonlLocalConfig(datasets.BuilderConfig):
 
 class JsonlLocal(datasets.GeneratorBasedBuilder):
     BUILDER_CONFIGS = [
-        JsonlLocalConfig(name="default", description="Local JSONL dataset with 1% validation (every 100th line)"),
+        JsonlLocalConfig(
+            name="default",
+            description="Local JSONL dataset with 1% validation (every 100th line)",
+        ),
     ]
 
     DEFAULT_CONFIG_NAME = "default"
@@ -30,9 +33,11 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
     def _info(self) -> datasets.DatasetInfo:
         return datasets.DatasetInfo(
             description="Local JSONL dataset (text-only), validation is every 100th line",
-            features=datasets.Features({
-                "text": datasets.Value("string"),
-            }),
+            features=datasets.Features(
+                {
+                    "text": datasets.Value("string"),
+                }
+            ),
             supervised_keys=None,
         )
 
@@ -48,7 +53,7 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
             # Support comma or colon separated absolute paths
             sep = "," if "," in env_files else ":"
             candidates = [p.strip() for p in env_files.split(sep) if p.strip()]
-            files = candidates
+            files = self._expand_file_patterns(candidates)
         else:
             if env_manifest and os.path.exists(env_manifest):
                 manifest_path = env_manifest
@@ -58,15 +63,57 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
                     f"or set JSONL_LOCAL_FILES with absolute file paths (comma/colon separated)."
                 )
             with open(manifest_path, "rt", encoding="utf-8") as f:
-                files = [line.strip() for line in f if line.strip()]
+                candidates = [line.strip() for line in f if line.strip()]
+                files = self._expand_file_patterns(candidates)
 
         # No download: files are local paths listed in manifest
         return [
-            datasets.SplitGenerator(name=datasets.Split.TRAIN, gen_kwargs={"files": files, "split_name": "train"}),
-            datasets.SplitGenerator(name=datasets.Split.VALIDATION, gen_kwargs={"files": files, "split_name": "validation"}),
+            datasets.SplitGenerator(
+                name=datasets.Split.TRAIN,
+                gen_kwargs={"files": files, "split_name": "train"},
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.VALIDATION,
+                gen_kwargs={"files": files, "split_name": "validation"},
+            ),
         ]
 
-    def _generate_examples(self, files: List[str], split_name: str) -> Iterator[Tuple[str, dict]]:
+    def _expand_file_patterns(self, candidates: List[str]) -> List[str]:
+        """
+        Expand glob patterns from candidates (supports *, ?, [], and **),
+        preserve candidate order, sort matches within each pattern for determinism,
+        and remove duplicates while preserving first occurrence.
+        Only include existing files (exclude directories).
+        """
+        expanded: List[str] = []
+        for pattern in candidates:
+            has_wildcard = (
+                ("*" in pattern)
+                or ("?" in pattern)
+                or ("[" in pattern)
+                or ("**" in pattern)
+            )
+            if has_wildcard:
+                matches = glob.glob(pattern, recursive=True)
+                file_matches = [p for p in matches if os.path.isfile(p)]
+                file_matches.sort()
+                expanded.extend(file_matches)
+            else:
+                expanded.append(pattern)
+
+        # Deduplicate while preserving order
+        seen = set()
+        unique_files: List[str] = []
+        for p in expanded:
+            if p not in seen:
+                unique_files.append(p)
+                seen.add(p)
+
+        return unique_files
+
+    def _generate_examples(
+        self, files: List[str], split_name: str
+    ) -> Iterator[Tuple[str, dict]]:
         # validation: every 100th line (global index % 100 == 0)
         # train: the rest
         global_index = 0
@@ -94,7 +141,7 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
                         global_index += 1
                         continue
 
-                    is_validation = (global_index % 100 == 0)
+                    is_validation = global_index % 100 == 0
                     if split_name == "validation" and not is_validation:
                         global_index += 1
                         continue
