@@ -5,12 +5,12 @@
 # - On-the-fly split: validation takes 1% (every 100th line), train takes the rest
 
 import glob
-import gzip
-import json
 import os
 from typing import Iterator, List, Tuple
 
 import datasets
+import orjson as json
+from xopen import xopen
 
 logger = datasets.logging.get_logger(__name__)
 
@@ -122,9 +122,8 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
                 logger.warning(f"File not found, skipping: {fp}")
                 continue
 
-            open_fn = gzip.open if fp.endswith(".gz") else open
-            mode = "rt"
-            with open_fn(fp, mode=mode, encoding="utf-8") as f:
+            open_fn = xopen
+            with open_fn(fp, mode="rt", encoding="utf-8") as f:
                 for line_idx, line in enumerate(f):
                     line = line.strip()
                     if not line:

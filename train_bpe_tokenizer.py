@@ -1,4 +1,5 @@
 import json
+import os
 
 from datasets import load_dataset
 from tokenizers import (
@@ -9,20 +10,37 @@ from tokenizers import (
 )
 from tokenizers.pre_tokenizers import ByteLevel
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
-import os
 
 
-def batch_iterator(batch_size=1000):
+def batch_iterator(
+    batch_size=1000, num_workers=40, prefetch_factor=5, persistent_workers=True
+):
     # Only keep the text column to avoid decoding the rest of the columns unnecessarily
-    tok_dataset = dataset.select_columns("text")
-    for batch in tok_dataset.iter(batch_size):
+    from torch.utils.data import DataLoader
+
+    dataloader = DataLoader(
+        dataset,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
+        batch_size=batch_size,
+        persistent_workers=persistent_workers,
+    )
+
+    for batch in dataloader:
         yield batch["text"]
 
 
-use_data_file = True
-data_file = "/home/zhichaog/neural-sparse/data/wikibook.ml128.jsonl"
+# use_data_file = True
+# data_file = "data/wikibook.ml128.jsonl"
+# data_name = "dataloader/jsonl_in_seq"
+# os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/*"
+# output_dir = "modernbert-bpe-1"
+
+use_data_file = False
 data_name = "dataloader/jsonl_in_seq"
+data_file = "data/wikibook.ml128.jsonl"
 os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/*"
+output_dir = "modernbert-bpe-full-dl"
 
 if use_data_file:
     dataset = load_dataset(
@@ -30,13 +48,14 @@ if use_data_file:
         data_files=data_file,
         split="train",
     )
+    # dataset = dataset.select(range(30000))
 else:
     dataset = load_dataset(
         data_name,
         split="train",
+        streaming=True,
+        trust_remote_code=True,
     )
-
-# dataset = dataset.select(range(3000))
 
 albert_tokenizer = AutoTokenizer.from_pretrained("albert-base-v2")
 mdbert_tokenizer = AutoTokenizer.from_pretrained("answerdotai/ModernBERT-large")
@@ -45,6 +64,7 @@ tokenizer = Tokenizer(models.BPE())
 tokenizer.normalizer = albert_tokenizer.backend_tokenizer.normalizer
 tokenizer.pre_tokenizer = mdbert_tokenizer.backend_tokenizer.pre_tokenizer
 tokenizer.pre_tokenizer.add_prefix_space = True
+tokenizer.post_processor = mdbert_tokenizer.backend_tokenizer.post_processor
 trainer = trainers.BpeTrainer(
     vocab_size=30000,
     min_frequency=2,
@@ -52,7 +72,9 @@ trainer = trainers.BpeTrainer(
     special_tokens=list(mdbert_tokenizer.special_tokens_map.values()),
 )
 
-tokenizer.train_from_iterator(batch_iterator(), trainer=trainer, length=len(dataset))
+tokenizer.train_from_iterator(
+    batch_iterator(), trainer=trainer, length=len(dataset) if use_data_file else None
+)
 
 # Load ModernBERT added_tokens and add them with identical flags
 mdbert_tokenizer_path = "modernbert-base"
@@ -91,10 +113,8 @@ if special_added_tokens:
 if regular_added_tokens:
     tokenizer.add_tokens(regular_added_tokens)
 
-tokenizer.save("modernbert-bpe.json")
-
-tokenizer = PreTrainedTokenizerFast(
-    tokenizer_file="modernbert-bpe.json",
+hf_tokenizer = PreTrainedTokenizerFast(
+    tokenizer_object=tokenizer,
     unk_token=mdbert_tokenizer.unk_token,
     pad_token=mdbert_tokenizer.pad_token,
     cls_token=mdbert_tokenizer.cls_token,
@@ -102,7 +122,18 @@ tokenizer = PreTrainedTokenizerFast(
     mask_token=mdbert_tokenizer.mask_token,
 )
 
-tokenizer.backend_tokenizer.pre_tokenizer.add_prefix_space = True
-tokenizer.model_input_names = mdbert_tokenizer.model_input_names
-tokenizer.model_max_length = mdbert_tokenizer.model_max_length
-tokenizer.save_pretrained("modernbert-bpe-1")
+hf_tokenizer.backend_tokenizer.pre_tokenizer.add_prefix_space = True
+hf_tokenizer.model_max_length = mdbert_tokenizer.model_max_length
+hf_tokenizer.save_pretrained(output_dir)
+tokenizer.save(os.path.join(output_dir, "original_config.json"))
+
+with open(os.path.join(output_dir, "tokenizer_config.json")) as f:
+    tokenizer_config = json.load(f)
+tokenizer_config["add_prefix_space"] = True
+tokenizer_config["model_input_names"] = ["input_ids", "attention_mask"]
+tokenizer_config["clean_up_tokenization_spaces"] = True
+
+with open(os.path.join(output_dir, "tokenizer_config.json"), "w") as f:
+    json.dump(tokenizer_config, f, indent=4)
+
+# fix special tokens
