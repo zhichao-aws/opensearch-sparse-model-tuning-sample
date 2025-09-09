@@ -11,6 +11,7 @@ from tokenizers import (
 )
 from tokenizers.pre_tokenizers import Sequence, ByteLevel
 from tokenizers.normalizers import BertNormalizer
+from tokenizers.processors import TemplateProcessing
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
 
@@ -21,13 +22,13 @@ class PROCESSING(Enum):
 
 
 use_data_file = True
-processing = PROCESSING.BERT_METASPACE
+processing = PROCESSING.BERT
 os.environ["JSONL_LOCAL_FILES"] = (
     "/opt/dlami/nvme/dolma/wiki*,/opt/dlami/nvme/dolma/book*"
 )
 # os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/*"
 # os.environ["JSONL_LOCAL_SUFFIX_MAX"] = "2"
-output_dir = "modernbert-bpe-bert-wikibook"
+output_dir = "modernbert-bpe-bert-noprefix-wikibook"
 
 data_file = "data/wikibook.ml128.jsonl"
 
@@ -90,6 +91,7 @@ elif processing == PROCESSING.BERT_METASPACE:
         lowercase=True,
     )
     tokenizer.pre_tokenizer = Sequence(
+        # bert pre_tokenizer = Sequence([WhitespaceSplit(), Punctuation(behavior="isolated")])
         [bert_tokenizer.backend_tokenizer.pre_tokenizer, ByteLevel()]
     )
 elif processing == PROCESSING.BERT:
@@ -100,12 +102,12 @@ elif processing == PROCESSING.BERT:
         lowercase=True,
     )
     tokenizer.pre_tokenizer = Sequence(
-        [bert_tokenizer.backend_tokenizer.pre_tokenizer, ByteLevel()]
+        [bert_tokenizer.backend_tokenizer.pre_tokenizer, ByteLevel(add_prefix_space=False)]
     )
 
 trainer = trainers.BpeTrainer(
     vocab_size=30000,
-    min_frequency=2,
+    min_frequency=10,
     initial_alphabet=ByteLevel.alphabet(),
     special_tokens=list(mdbert_tokenizer.special_tokens_map.values()),
 )
@@ -162,6 +164,38 @@ hf_tokenizer = PreTrainedTokenizerFast(
 
 hf_tokenizer.backend_tokenizer.pre_tokenizer.add_prefix_space = True
 hf_tokenizer.model_max_length = mdbert_tokenizer.model_max_length
+
+# Align post-processor with ModernBERT but bind to current special token ids
+cls_tok = hf_tokenizer.cls_token
+sep_tok = hf_tokenizer.sep_token
+mask_tok = hf_tokenizer.mask_token
+pad_tok = hf_tokenizer.pad_token
+unk_tok = hf_tokenizer.unk_token
+
+cls_id = hf_tokenizer.cls_token_id
+sep_id = hf_tokenizer.sep_token_id
+mask_id = hf_tokenizer.mask_token_id
+pad_id = hf_tokenizer.pad_token_id
+unk_id = hf_tokenizer.unk_token_id
+
+special_token_pairs = []
+for tok, tid in [
+    (cls_tok, cls_id),
+    (sep_tok, sep_id),
+    (mask_tok, mask_id),
+    (pad_tok, pad_id),
+    (unk_tok, unk_id),
+]:
+    if tok is not None and tid is not None:
+        special_token_pairs.append((tok, tid))
+
+template = TemplateProcessing(
+    single=f"{cls_tok}:0 $A:0 {sep_tok}:0",
+    pair=f"{cls_tok}:0 $A:0 {sep_tok}:0 $B:0 {sep_tok}:0",
+    special_tokens=special_token_pairs,
+)
+
+hf_tokenizer.backend_tokenizer.post_processor = template
 hf_tokenizer.save_pretrained(output_dir)
 tokenizer.save(os.path.join(output_dir, "original_config.json"))
 
