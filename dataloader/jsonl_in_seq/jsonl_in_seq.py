@@ -12,6 +12,7 @@ import datasets
 import orjson as json
 from xopen import xopen
 import re
+import random
 
 logger = datasets.logging.get_logger(__name__)
 
@@ -67,6 +68,12 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
                 candidates = [line.strip() for line in f if line.strip()]
                 files = self._expand_file_patterns(candidates)
 
+        # Optionally shuffle file order before any iteration/printing
+        shuffle_env = (
+            os.environ.get("JSONL_LOCAL_SHUFFLE_FILES", "false").strip().lower()
+        )
+        if shuffle_env in {"1", "true", "yes", "y", "on"}:
+            random.shuffle(files)
         print(f"All files: {files}")
         # No download: files are local paths listed in manifest
         return [
