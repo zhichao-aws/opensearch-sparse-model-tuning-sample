@@ -1,5 +1,6 @@
 import json
 import os
+from enum import Enum
 
 from datasets import load_dataset
 from tokenizers import (
@@ -8,63 +9,100 @@ from tokenizers import (
     models,
     trainers,
 )
-from tokenizers.pre_tokenizers import ByteLevel
+from tokenizers.pre_tokenizers import Sequence, ByteLevel
+from tokenizers.normalizers import BertNormalizer
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
 
-def batch_iterator(
-    batch_size=1000, num_workers=40, prefetch_factor=5, persistent_workers=True
-):
-    # Only keep the text column to avoid decoding the rest of the columns unnecessarily
-    from torch.utils.data import DataLoader
-
-    dataloader = DataLoader(
-        dataset,
-        num_workers=num_workers,
-        prefetch_factor=prefetch_factor,
-        batch_size=batch_size,
-        persistent_workers=persistent_workers,
-    )
-
-    for batch in dataloader:
-        yield batch["text"]
+class PROCESSING(Enum):
+    ALBERT = 1
+    BERT = 2
+    BERT_METASPACE = 3
 
 
-# use_data_file = True
-# data_file = "data/wikibook.ml128.jsonl"
-# data_name = "dataloader/jsonl_in_seq"
+use_data_file = True
+processing = PROCESSING.BERT_METASPACE
+os.environ["JSONL_LOCAL_FILES"] = (
+    "/opt/dlami/nvme/dolma/wiki*,/opt/dlami/nvme/dolma/book*"
+)
 # os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/*"
-# output_dir = "modernbert-bpe-1"
+# os.environ["JSONL_LOCAL_SUFFIX_MAX"] = "2"
+output_dir = "modernbert-bpe-bert-wikibook"
 
-use_data_file = False
-data_name = "dataloader/jsonl_in_seq"
 data_file = "data/wikibook.ml128.jsonl"
-os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/*"
-output_dir = "modernbert-bpe-full-dl"
 
 if use_data_file:
     dataset = load_dataset(
         "json",
-        data_files=data_file,
+        data_files=[
+            os.path.join("/home/ubuntu/dolma-jsonl/", f)
+            for f in os.listdir("/home/ubuntu/dolma-jsonl/")
+        ],
         split="train",
+        num_proc=40,
     )
-    # dataset = dataset.select(range(30000))
+    texts = dataset["text"]
+
+    def batch_iterator(batch_size=1000):
+        for i in range(0, len(texts), batch_size):
+            yield texts[i : i + batch_size]
 else:
     dataset = load_dataset(
-        data_name,
+        "dataloader/jsonl_in_seq",
         split="train",
         streaming=True,
         trust_remote_code=True,
     )
 
+    def batch_iterator(
+        batch_size=1000, num_workers=40, prefetch_factor=5, persistent_workers=True
+    ):
+        # Only keep the text column to avoid decoding the rest of the columns unnecessarily
+        from torch.utils.data import DataLoader
+
+        dataloader = DataLoader(
+            dataset,
+            num_workers=num_workers,
+            prefetch_factor=prefetch_factor,
+            batch_size=batch_size,
+            persistent_workers=persistent_workers,
+        )
+
+        for batch in dataloader:
+            yield batch["text"]
+
+
 albert_tokenizer = AutoTokenizer.from_pretrained("albert-base-v2")
 mdbert_tokenizer = AutoTokenizer.from_pretrained("answerdotai/ModernBERT-large")
+bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 tokenizer = Tokenizer(models.BPE())
-tokenizer.normalizer = albert_tokenizer.backend_tokenizer.normalizer
-tokenizer.pre_tokenizer = mdbert_tokenizer.backend_tokenizer.pre_tokenizer
-tokenizer.pre_tokenizer.add_prefix_space = True
-tokenizer.post_processor = mdbert_tokenizer.backend_tokenizer.post_processor
+
+if processing == PROCESSING.ALBERT:
+    tokenizer.normalizer = albert_tokenizer.backend_tokenizer.normalizer
+    tokenizer.pre_tokenizer = mdbert_tokenizer.backend_tokenizer.pre_tokenizer
+    tokenizer.pre_tokenizer.add_prefix_space = True
+elif processing == PROCESSING.BERT_METASPACE:
+    tokenizer.normalizer = BertNormalizer(
+        clean_text=True,
+        handle_chinese_chars=False,
+        strip_accents=True,
+        lowercase=True,
+    )
+    tokenizer.pre_tokenizer = Sequence(
+        [bert_tokenizer.backend_tokenizer.pre_tokenizer, ByteLevel()]
+    )
+elif processing == PROCESSING.BERT:
+    tokenizer.normalizer = BertNormalizer(
+        clean_text=True,
+        handle_chinese_chars=False,
+        strip_accents=True,
+        lowercase=True,
+    )
+    tokenizer.pre_tokenizer = Sequence(
+        [bert_tokenizer.backend_tokenizer.pre_tokenizer, ByteLevel()]
+    )
+
 trainer = trainers.BpeTrainer(
     vocab_size=30000,
     min_frequency=2,
