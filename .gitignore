@@ -189,3 +189,4 @@ scores
 *.tar.lzma
 *.tar.lz
 *.jsonl
+pretrain

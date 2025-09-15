@@ -9,8 +9,8 @@ from tokenizers import (
     models,
     trainers,
 )
-from tokenizers.pre_tokenizers import Sequence, ByteLevel
 from tokenizers.normalizers import BertNormalizer
+from tokenizers.pre_tokenizers import ByteLevel, Sequence
 from tokenizers.processors import TemplateProcessing
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
@@ -22,31 +22,35 @@ class PROCESSING(Enum):
 
 
 use_data_file = True
-processing = PROCESSING.BERT
-os.environ["JSONL_LOCAL_FILES"] = (
-    "/opt/dlami/nvme/dolma/wiki*,/opt/dlami/nvme/dolma/book*"
-)
-# os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/*"
-# os.environ["JSONL_LOCAL_SUFFIX_MAX"] = "2"
-output_dir = "modernbert-bpe-bert-noprefix-wikibook"
-
-data_file = "data/wikibook.ml128.jsonl"
+processing = PROCESSING.BERT_METASPACE
+# os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/wiki*,/opt/dlami/nvme/dolma/book*"
+# os.environ["JSONL_LOCAL_SUFFIX_MAX"] = "5"
+output_dir = "modernbert-bpe-bert-wbm"
+data_files = [
+    os.path.join("/home/ubuntu/tokenizer_corpus/", f)
+    for f in os.listdir("/home/ubuntu/tokenizer_corpus/")
+]
+print(data_files)
 
 if use_data_file:
     dataset = load_dataset(
         "json",
-        data_files=[
-            os.path.join("/home/ubuntu/dolma-jsonl/", f)
-            for f in os.listdir("/home/ubuntu/dolma-jsonl/")
-        ],
+        data_files=data_files,
         split="train",
         num_proc=40,
     )
-    texts = dataset["text"]
 
-    def batch_iterator(batch_size=1000):
-        for i in range(0, len(texts), batch_size):
-            yield texts[i : i + batch_size]
+    def batch_iterator(batch_size=2000):
+        if len(dataset) < 1e8:
+            texts = dataset["text"]
+            for i in range(0, len(texts), batch_size):
+                yield texts[i : i + batch_size]
+        else:
+            print("batching")
+            batched_dataset = dataset.batch(batch_size)
+            for batch in batched_dataset:
+                yield batch["text"]
+
 else:
     dataset = load_dataset(
         "dataloader/jsonl_in_seq",
@@ -56,7 +60,7 @@ else:
     )
 
     def batch_iterator(
-        batch_size=1000, num_workers=40, prefetch_factor=5, persistent_workers=True
+        batch_size=1000, num_workers=10, prefetch_factor=5, persistent_workers=True
     ):
         # Only keep the text column to avoid decoding the rest of the columns unnecessarily
         from torch.utils.data import DataLoader
@@ -102,7 +106,10 @@ elif processing == PROCESSING.BERT:
         lowercase=True,
     )
     tokenizer.pre_tokenizer = Sequence(
-        [bert_tokenizer.backend_tokenizer.pre_tokenizer, ByteLevel(add_prefix_space=False)]
+        [
+            bert_tokenizer.backend_tokenizer.pre_tokenizer,
+            ByteLevel(add_prefix_space=False),
+        ]
     )
 
 trainer = trainers.BpeTrainer(

@@ -6,13 +6,13 @@
 
 import glob
 import os
+import random
+import re
 from typing import Iterator, List, Tuple
 
 import datasets
 import orjson as json
 from xopen import xopen
-import re
-import random
 
 logger = datasets.logging.get_logger(__name__)
 
@@ -73,6 +73,7 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
             os.environ.get("JSONL_LOCAL_SHUFFLE_FILES", "false").strip().lower()
         )
         if shuffle_env in {"1", "true", "yes", "y", "on"}:
+            random.seed(0)
             random.shuffle(files)
         print(f"All files: {files}")
         # No download: files are local paths listed in manifest
