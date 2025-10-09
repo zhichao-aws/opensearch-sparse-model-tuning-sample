@@ -73,10 +73,16 @@ class SparseModelTrainer(Trainer):
             return torch.sum(flops_per_average_token)
 
     def get_lambda(self, lambda_value, lambda_T):
-        if self.state.global_step >= lambda_T:
-            return lambda_value
+        start_T = getattr(self.data_args, "flops_start_T", 0) or 0
         step = self.state.global_step + 1
-        return lambda_value * (step / lambda_T) ** 2
+        # warmup delay: lambda is 0 until start_T
+        if step <= start_T:
+            return 0
+        # shifted schedule after start_T
+        shifted_step = step - start_T
+        if shifted_step >= lambda_T:
+            return lambda_value
+        return lambda_value * (shifted_step / lambda_T) ** 2
 
     def compute_loss(
         self, model: SparseModel, inputs, return_outputs=False, num_items_in_batch=None
