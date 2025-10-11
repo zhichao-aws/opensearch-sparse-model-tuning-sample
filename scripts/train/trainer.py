@@ -8,7 +8,7 @@ from transformers import Trainer
 from transformers.trainer_utils import seed_worker
 
 from ..dataset.dataset import CombinedDataset, CombinedRandomSampler
-from ..model.sparse_encoders import SparseModel
+from ..model.sparse_encoders import SparseModel, get_topk
 from ..utils import gather_rep
 from .bi_encoder_wrapper import BiEncoderWrapper, RemoteModel
 
@@ -57,6 +57,7 @@ class SparseModelTrainer(Trainer):
         self.ranking_loss_moving_avg = 0
         kwargs["model"] = ModelWrapper(kwargs["model"], model_args.inf_free)
         super().__init__(**kwargs)
+        self.enable_topk = False
 
     def flops_value(self, representation, group_num=1):
         # representation size: (ndevice * batch_size) * vocab_dim
@@ -108,6 +109,7 @@ class SparseModelTrainer(Trainer):
         q_rep = gather_rep(q_rep, self.accelerator)
         if "scores" in inputs:
             inputs["scores"] = gather_rep(inputs["scores"], self.accelerator)
+        
         d_flops = self.flops_value(d_rep, d_rep.shape[0] // q_rep.shape[0])
         flops_loss += d_flops * self.get_lambda(
             self.data_args.flops_d_lambda, self.data_args.flops_d_T
@@ -119,6 +121,13 @@ class SparseModelTrainer(Trainer):
             )
 
         ranking_loss = 0
+        d_avg_len = (d_rep > 0).sum() / d_rep.shape[0]
+        if d_avg_len <= self.data_args.d_topk:
+            self.enable_topk = True
+            logger.info(f"enable topk because d_avg_len <= {self.data_args.d_topk}")
+        if self.enable_topk:
+            d_rep = get_topk(d_rep, self.data_args.d_topk)
+            q_rep = get_topk(q_rep, self.data_args.q_topk)
         for loss_function in self.loss_functions:
             ranking_loss += loss_function.get_loss(
                 q_rep=q_rep, d_rep=d_rep, inputs=inputs

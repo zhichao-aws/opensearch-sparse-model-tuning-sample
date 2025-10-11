@@ -39,6 +39,14 @@ class TextPreProcessors:
         texts = [" " + text.lower() for text in texts]
         return texts
 
+def get_topk(rep, topk):
+    if topk is None:
+        return rep
+    k = min(int(topk), rep.size(-1))
+    topk_indices = torch.topk(rep, k=k, dim=-1).indices
+    mask = torch.zeros_like(rep, dtype=torch.bool)
+    mask.scatter_(dim=-1, index=topk_indices, value=True)
+    return rep * mask.to(rep.dtype)
 
 class SparseModel(torch.nn.Module):
     def __init__(
@@ -98,12 +106,17 @@ class SparseModel(torch.nn.Module):
         self.use_l0 = use_l0
         logger.info(f"model prune ratio: {self.prune_ratio}, use l0: {self.use_l0}")
 
-    def forward(self, inf_free=False, **kwargs):
+    def forward(self, inf_free=False, topk=None, **kwargs):
         # input kwargs is the features from tokenizer
         if inf_free:
-            return self._encode_inf_free(**kwargs)
+            output = self._encode_inf_free(**kwargs)
         else:
-            return self._encode(**kwargs)
+            output = self._encode(**kwargs)
+
+        if topk is not None:
+            output = get_topk(output, topk)
+
+        return output
 
     def _encode(self, **kwargs):
         output = self.backbone(**kwargs)[0]
@@ -152,7 +165,7 @@ class SparsePostProcessor(object):
 
 
 class SparseEncoder:
-    def __init__(self, sparse_model, max_length, do_count=True):
+    def __init__(self, sparse_model, max_length, do_count=True, topk=None):
         self.model = sparse_model
         self.tokenizer = sparse_model.tokenizer
         self.post_processor = SparsePostProcessor(tokenizer=sparse_model.tokenizer)
@@ -160,6 +173,7 @@ class SparseEncoder:
         self.max_length = max_length
         self.device = self.model.backbone.device
         self.count_tensor = torch.zeros(self.model.vocab_size).to(self.device)
+        self.topk = topk
 
     def reset_count(self):
         self.count_tensor = torch.zeros(self.model.vocab_size).to(self.device)
@@ -175,7 +189,7 @@ class SparseEncoder:
         )
         features = {k: v.to(self.device) for k, v in features.items()}
         with torch.no_grad():
-            output = self.model(inf_free=inf_free, **features)
+            output = self.model(inf_free=inf_free, topk=self.topk, **features)
         if self.do_count:
             self.count_tensor += (output > 0).long().sum(dim=0)
         output = self.post_processor(output)

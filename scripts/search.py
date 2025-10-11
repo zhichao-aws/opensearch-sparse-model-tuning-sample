@@ -24,6 +24,7 @@ async def search(
     use_two_phase: bool = False,
     query_prune: float = 0,
     return_text: bool = False,
+    q_topk: int = None,
 ):
     if use_two_phase:
         client = get_os_client()
@@ -51,6 +52,7 @@ async def search(
         sparse_model=model,
         max_length=max_length,
         do_count=True,
+        topk=q_topk,
     )
 
     run_res = dict()

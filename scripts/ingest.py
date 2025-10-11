@@ -25,6 +25,7 @@ async def ingest(
     accelerator: Accelerator,
     max_length: int = 512,
     batch_size: int = 50,
+    d_topk: int = None,
 ):
     os_client = get_os_client()
     os.makedirs(out_dir, exist_ok=True)
@@ -50,6 +51,7 @@ async def ingest(
         sparse_model=model,
         max_length=max_length,
         do_count=True,
+        topk=d_topk,
     )
 
     # prepare index

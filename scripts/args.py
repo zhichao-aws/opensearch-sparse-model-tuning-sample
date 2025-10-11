@@ -47,6 +47,9 @@ class DataTrainingArguments:
     swap_times: float = field(default=0)
     temperature: float = field(default=1.0)
     score_scale: float = field(default=1.0)
+    q_topk: int = field(default=None)
+    d_topk: int = field(default=None)
+    use_topk: bool = field(default=False)
 
     def __post_init__(self):
         return
