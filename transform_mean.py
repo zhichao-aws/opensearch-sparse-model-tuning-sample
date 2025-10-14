@@ -6,8 +6,8 @@ fuzzy = False
 save = True
 target_is_bpe = True
 source_model_id = "answerdotai/ModernBERT-base"
-target_model_id = "modernbert-bpe-bert-wbm"
-save_name = "modernbert-bpe-bert-wbm-focus"
+target_model_id = "modernbert-bpe-bert-10k"
+save_name = "modernbert-bpe-bert-10k-focus"
 
 source_tokenizer = AutoTokenizer.from_pretrained(source_model_id)
 target_tokenizer = AutoTokenizer.from_pretrained(target_model_id)

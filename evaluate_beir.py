@@ -51,10 +51,14 @@ def get_suffix(model_args, data_args):
 def load_beir_from_hf(
     dataset_name: str = "nfcorpus",
     split: str = "test",
+    load_corpus: bool = True,
 ) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str], Dict[str, Dict[str, int]]]:
-    ds_corpus = load_dataset(
-        f"BEIR/{dataset_name}", "corpus", split="corpus", trust_remote_code=True
-    )
+    if load_corpus:
+        ds_corpus = load_dataset(
+            f"BEIR/{dataset_name}", "corpus", split="corpus", trust_remote_code=True
+        )
+    else:
+        ds_corpus = None
     ds_queries = load_dataset(
         f"BEIR/{dataset_name}", "queries", split="queries", trust_remote_code=True
     )
@@ -64,8 +68,11 @@ def load_beir_from_hf(
 
     # Build BEIR-style corpus
     corpus: Dict[str, Dict[str, str]] = {}
-    for r in ds_corpus:
-        corpus[str(r["_id"])] = {"title": r["title"], "text": r["text"]}
+    if load_corpus:
+        for r in ds_corpus:
+            corpus[str(r["_id"])] = {"title": r["title"], "text": r["text"]}
+    else:
+        corpus = None
 
     # Build BEIR-style queries
     queries: Dict[str, str] = {}

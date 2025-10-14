@@ -25,10 +25,12 @@ use_data_file = True
 processing = PROCESSING.BERT_METASPACE
 # os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/wiki*,/opt/dlami/nvme/dolma/book*"
 # os.environ["JSONL_LOCAL_SUFFIX_MAX"] = "5"
-output_dir = "modernbert-bpe-bert-wbm"
+output_dir = "modernbert-bpe-bert-10k"
+vocab_size = 10000
 data_files = [
     os.path.join("/home/ubuntu/tokenizer_corpus/", f)
     for f in os.listdir("/home/ubuntu/tokenizer_corpus/")
+    if f.startswith("wiki") or f.startswith("book")
 ]
 print(data_files)
 
@@ -113,7 +115,7 @@ elif processing == PROCESSING.BERT:
     )
 
 trainer = trainers.BpeTrainer(
-    vocab_size=30000,
+    vocab_size=vocab_size,
     min_frequency=10,
     initial_alphabet=ByteLevel.alphabet(),
     special_tokens=list(mdbert_tokenizer.special_tokens_map.values()),
