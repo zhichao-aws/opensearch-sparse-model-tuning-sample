@@ -200,6 +200,7 @@ def main():
 
     model = get_model(model_args)
     accelerator = Accelerator(mixed_precision="fp16")
+    accelerator.prepare(model)
     accelerator.wait_for_everyone()
 
     evaluate_msmarco_dev(model_args, data_args, training_args, model, accelerator)

@@ -45,7 +45,6 @@ async def ingest(
         f"Local rank: {accelerator.local_process_index}, index_name: {index_name}, sample number: {len(ddp_dataset)}"
     )
 
-    accelerator.prepare(model)
     sparse_encoder = SparseEncoder(
         sparse_model=model,
         max_length=max_length,
