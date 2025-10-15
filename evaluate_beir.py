@@ -18,7 +18,7 @@ from transformers import (
 
 from scripts.args import nano_beir_datasets, parse_args
 from scripts.dataset.data_utils import cached
-from scripts.dataset.dataset import BEIRCorpusDataset
+from scripts.dataset.dataset import BEIRCorpusDataset, HFDatasetWrapper
 from scripts.ingest import ingest
 from scripts.search import search
 from scripts.utils import emit_metrics, get_model, set_logging
@@ -154,14 +154,22 @@ def evaluate_beir(model_args, data_args, training_args, model, accelerator):
     }
     avg_res = dict()
     for dataset in datasets:
-        corpus, queries, qrels = load_beir_from_hf(dataset_name=dataset, split="test")
+        _, queries, qrels = load_beir_from_hf(
+            dataset_name=dataset, split="test", load_corpus=False
+        )
+        corpus = HFDatasetWrapper(
+            load_dataset(
+                f"BEIR/{dataset}", "corpus", split="corpus", trust_remote_code=True
+            ),
+            sample_function=lambda x: (x["_id"], x["title"] + " " + x["text"]),
+        )
         logger.info(
             f"Loaded {dataset} with {len(corpus)} documents and {len(queries)} queries"
         )
         if not data_args.skip_ingest:
             asyncio.run(
                 ingest(
-                    dataset=BEIRCorpusDataset(corpus=corpus),
+                    dataset=corpus,
                     model=model,
                     out_dir=beir_eval_dir,
                     index_name=dataset,
