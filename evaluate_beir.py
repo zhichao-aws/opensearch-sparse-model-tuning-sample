@@ -370,7 +370,7 @@ def main():
     accelerator.prepare(model)
     accelerator.wait_for_everyone()
 
-    # evaluate_beir(model_args, data_args, training_args, model, accelerator)
+    evaluate_beir(model_args, data_args, training_args, model, accelerator)
     if accelerator.is_local_main_process:
         warmup_nano_beir()
     accelerator.wait_for_everyone()
