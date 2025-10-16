@@ -134,6 +134,19 @@ class SparseModelTrainer(Trainer):
                     )
             flops_loss += q_flops_loss
 
+        # Custom statistics regularization on d_rep: enforce mean(nonzero)=0.7 and max=3
+        stats_loss = torch.tensor(0.0, device=d_rep.device, dtype=d_rep.dtype)
+        nonzero_vals = d_rep[d_rep > 0]
+        if nonzero_vals.numel() > 0:
+            mean_loss = (nonzero_vals.mean() - 0.7) ** 2
+            max_loss = (torch.max(nonzero_vals) - 3.0) ** 2
+            stats_loss = mean_loss + max_loss
+        weighted_stats_loss = stats_loss * 1000.0
+        # Cap the forward value at 500 without affecting gradients
+        capped_weighted_stats_loss = weighted_stats_loss + (
+            torch.clamp(weighted_stats_loss, max=500.0) - weighted_stats_loss
+        ).detach()
+
         ranking_loss = 0
         for loss_function in self.loss_functions:
             ranking_loss += loss_function.get_loss(
@@ -143,7 +156,7 @@ class SparseModelTrainer(Trainer):
             0.01 * ranking_loss.item() + 0.99 * self.ranking_loss_moving_avg
         )
 
-        loss = ranking_loss + flops_loss
+        loss = ranking_loss + flops_loss + capped_weighted_stats_loss
         outputs = {
             "q_rep": q_rep,
             "d_rep": d_rep,
@@ -151,7 +164,9 @@ class SparseModelTrainer(Trainer):
 
         if self.state.global_step % self.args.logging_steps == 0:
             logger.info(
-                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {d_avg_len}, avg query length: {q_avg_len}"
+                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, \
+                d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {d_avg_len}, avg query length: {q_avg_len}, \
+                stats_loss: {stats_loss}, capped_stats_loss: {capped_weighted_stats_loss}"
             )
             with torch.no_grad():
                 nonzero = d_rep[d_rep > 0]
