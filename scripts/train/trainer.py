@@ -135,17 +135,22 @@ class SparseModelTrainer(Trainer):
             flops_loss += q_flops_loss
 
         # Custom statistics regularization on d_rep: enforce mean(nonzero)=0.7 and max=3
-        stats_loss = torch.tensor(0.0, device=d_rep.device, dtype=d_rep.dtype)
-        nonzero_vals = d_rep[d_rep > 0]
-        if nonzero_vals.numel() > 0:
-            mean_loss = (nonzero_vals.mean() - 0.7) ** 2
-            max_loss = (torch.max(nonzero_vals) - 3.0) ** 2
-            stats_loss = mean_loss + max_loss
-        weighted_stats_loss = stats_loss * 1000.0
-        # Cap the forward value at 500 without affecting gradients
-        capped_weighted_stats_loss = weighted_stats_loss + (
-            torch.clamp(weighted_stats_loss, max=500.0) - weighted_stats_loss
-        ).detach()
+        start_T = getattr(self.data_args, "flops_start_T", 0) or 0
+        if self.state.global_step + 1 <= start_T:
+            stats_loss = 0
+            capped_weighted_stats_loss = 0
+        else:
+            stats_loss = torch.tensor(0.0, device=d_rep.device, dtype=d_rep.dtype)
+            nonzero_vals = d_rep[d_rep > 0]
+            if nonzero_vals.numel() > 0:
+                mean_loss = (nonzero_vals.mean() - 0.7) ** 2
+                max_loss = (torch.max(nonzero_vals) - 3.0) ** 2
+                stats_loss = mean_loss + max_loss
+            weighted_stats_loss = stats_loss * 1000.0
+            # Cap the forward value at 500 without affecting gradients
+            capped_weighted_stats_loss = weighted_stats_loss + (
+                torch.clamp(weighted_stats_loss, max=500.0) - weighted_stats_loss
+            ).detach()
 
         ranking_loss = 0
         for loss_function in self.loss_functions:

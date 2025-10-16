@@ -13,7 +13,7 @@ data_type: kd
 loss_types: [marginmse]
 sample_num_one_query: 2
 use_in_batch_negatives: false
-flops_start_T: 0
+flops_start_T: 5000
 flops_d_lambda: 5
 flops_d_T: 50000
 flops_q_lambda: 10
