@@ -135,24 +135,28 @@ class SparseModelTrainer(Trainer):
             flops_loss += q_flops_loss
 
         # Custom statistics regularization on d_rep: enforce mean(nonzero)=0.7 and max=3
-        start_T = getattr(self.data_args, "flops_start_T", 0) or 0
         pos = d_rep > 0
-        N = pos.sum().clamp_min(1).float()
+        q_pos = q_rep > 0
+        N = pos.sum().clamp_min(1).float() + q_pos.sum().clamp_min(1).float()
         batch_size = d_rep.shape[0]
-        if N>500*batch_size:
+        if N > 500 * batch_size:
             stats_loss = 0
             capped_weighted_stats_loss = 0
         else:
             stats_loss = torch.tensor(0.0, device=d_rep.device, dtype=d_rep.dtype)
-            nonzero_vals = d_rep[pos]
+            nonzero_vals = torch.cat([d_rep[pos], q_rep[q_pos]]).view(-1)
             mean_loss = (nonzero_vals.mean() - 0.7) ** 2 * N
-            max_loss = (torch.max(nonzero_vals) - 3.0) ** 2
+            topk_mean = nonzero_vals.topk(k=batch_size).values.mean()
+            max_loss = (topk_mean - 3.0) ** 2
             stats_loss = mean_loss + max_loss
             weighted_stats_loss = stats_loss * 10.0
             # Cap the forward value at 500 without affecting gradients
-            capped_weighted_stats_loss = weighted_stats_loss + (
-                torch.clamp(weighted_stats_loss, max=500.0) - weighted_stats_loss
-            ).detach()
+            capped_weighted_stats_loss = (
+                weighted_stats_loss
+                + (
+                    torch.clamp(weighted_stats_loss, max=100.0) - weighted_stats_loss
+                ).detach()
+            )
 
         ranking_loss = 0
         for loss_function in self.loss_functions:
@@ -171,14 +175,20 @@ class SparseModelTrainer(Trainer):
 
         if self.state.global_step % self.args.logging_steps == 0:
             logger.info(
-                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, \
-                d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {d_avg_len}, avg query length: {q_avg_len}, \
-                stats_loss: {stats_loss}, capped_stats_loss: {capped_weighted_stats_loss}"
+                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss}"
+            )
+            logger.info(f"avg doc length: {d_avg_len}, avg query length: {q_avg_len}")
+            logger.info(
+                f"stats_loss: {stats_loss}, capped_stats_loss: {capped_weighted_stats_loss}"
             )
             with torch.no_grad():
                 nonzero = d_rep[d_rep > 0]
+                q_nonzero = q_rep[q_rep > 0]
                 logger.info(
-                    f"nonzero entries: {torch.mean(nonzero)} {torch.min(nonzero)} {torch.max(nonzero)}"
+                    f"nonzero entries: {torch.mean(nonzero)} {torch.max(nonzero)} {torch.topk(nonzero, k=10).values.mean()}"
+                )
+                logger.info(
+                    f"q nonzero entries: {torch.mean(q_nonzero)} {torch.max(q_nonzero)} {torch.topk(q_nonzero, k=10).values.mean()}"
                 )
         # DP reduce grad by sum, while DDP reduce grad by mean
         # scale the loss to fix the gap
