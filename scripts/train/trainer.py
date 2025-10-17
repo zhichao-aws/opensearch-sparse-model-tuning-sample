@@ -120,8 +120,8 @@ class SparseModelTrainer(Trainer):
                 d_flops_loss = torch.tensor(0.0, device=d_rep.device, dtype=d_rep.dtype)
         flops_loss += d_flops_loss
 
+        q_avg_len = (q_rep > 0).sum() / q_rep.shape[0]
         if not self.model_args.inf_free:
-            q_avg_len = (q_rep > 0).sum() / q_rep.shape[0]
             q_flops = self.flops_value(q_rep)
             q_lambda = self.get_lambda(
                 self.data_args.flops_q_lambda, self.data_args.flops_q_T
@@ -151,12 +151,26 @@ class SparseModelTrainer(Trainer):
 
         if self.state.global_step % self.args.logging_steps == 0:
             logger.info(
-                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {d_avg_len}, avg query length: {q_avg_len}"
+                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss}"
             )
+            logger.info(f"avg doc length: {d_avg_len}, avg query length: {q_avg_len}")
             with torch.no_grad():
                 nonzero = d_rep[d_rep > 0]
+                q_nonzero = q_rep[q_rep > 0]
+                # average common non-zero entries per (q, d) pair under current loss setting
+                try:
+                    if len(self.loss_functions) > 0:
+                        avg_common_hits = self.loss_functions[0].get_avg_hits(
+                            q_rep, d_rep
+                        )
+                        logger.info(f"avg common hits per pair: {avg_common_hits}")
+                except Exception as e:
+                    logger.warning(f"avg common hits computation failed: {e}")
                 logger.info(
-                    f"nonzero entries: {torch.mean(nonzero)} {torch.min(nonzero)} {torch.max(nonzero)}"
+                    f"nonzero entries: {torch.mean(nonzero)} {torch.max(nonzero)}"
+                )
+                logger.info(
+                    f"q_nonzero entries: {torch.mean(q_nonzero)} {torch.max(q_nonzero)}"
                 )
         # DP reduce grad by sum, while DDP reduce grad by mean
         # scale the loss to fix the gap
