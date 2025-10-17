@@ -136,17 +136,19 @@ class SparseModelTrainer(Trainer):
 
         # Custom statistics regularization on d_rep: enforce mean(nonzero)=0.7 and max=3
         start_T = getattr(self.data_args, "flops_start_T", 0) or 0
-        if self.state.global_step + 1 <= start_T:
+        pos = d_rep > 0
+        N = pos.sum().clamp_min(1).float()
+        batch_size = d_rep.shape[0]
+        if N>500*batch_size:
             stats_loss = 0
             capped_weighted_stats_loss = 0
         else:
             stats_loss = torch.tensor(0.0, device=d_rep.device, dtype=d_rep.dtype)
-            nonzero_vals = d_rep[d_rep > 0]
-            if nonzero_vals.numel() > 0:
-                mean_loss = (nonzero_vals.mean() - 0.7) ** 2
-                max_loss = (torch.max(nonzero_vals) - 3.0) ** 2
-                stats_loss = mean_loss + max_loss
-            weighted_stats_loss = stats_loss * 1000.0
+            nonzero_vals = d_rep[pos]
+            mean_loss = (nonzero_vals.mean() - 0.7) ** 2 * N
+            max_loss = (torch.max(nonzero_vals) - 3.0) ** 2
+            stats_loss = mean_loss + max_loss
+            weighted_stats_loss = stats_loss * 10.0
             # Cap the forward value at 500 without affecting gradients
             capped_weighted_stats_loss = weighted_stats_loss + (
                 torch.clamp(weighted_stats_loss, max=500.0) - weighted_stats_loss
