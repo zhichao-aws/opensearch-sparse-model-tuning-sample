@@ -19,32 +19,11 @@ class SparseTrainingLoss:
     def get_avg_hits(self, q_rep, d_rep):
         """
         Return the average number of common non-zero entries per (q, d) pair.
-
-        Rules:
-        - If use_in_batch_negatives is False: d_rep is grouped as [batch_size * group_size, dim].
-          Reshape to [batch_size, group_size, dim] and average common non-zero counts over pairs.
-        - If use_in_batch_negatives is True: compute all pairwise (q, d) common non-zero counts and average.
         """
-        use_in_batch = getattr(self, "use_in_batch_negatives", False)
-        if not use_in_batch:
-            batch_size = q_rep.shape[0]
-            group_size = d_rep.shape[0] // batch_size
-            d_grouped = d_rep.reshape(batch_size, group_size, -1)
-
-            q_bin = (
-                (q_rep > 0)
-                .unsqueeze(1)
-                .expand(batch_size, group_size, q_rep.shape[-1])
-                .float()
-            )
-            d_bin = (d_grouped > 0).float()
-            common = (q_bin * d_bin).sum(dim=-1)  # [batch_size, group_size]
-            return common.mean()
-        else:
-            q_bin = (q_rep > 0).float()  # [bs, dim]
-            d_bin = (d_rep > 0).float()  # [nd, dim]
-            common = torch.matmul(q_bin, d_bin.t())  # [bs, nd]
-            return common.mean()
+        q_bin = (q_rep > 0).to(dtype=torch.float32)  # [bs, dim]
+        d_bin = (d_rep > 0).to(dtype=torch.float32)  # [nd, dim]
+        common = torch.matmul(q_bin, d_bin.t())  # [bs, nd]
+        return common.mean()
 
 
 class KLDivLoss(SparseTrainingLoss):
