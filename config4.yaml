@@ -3,8 +3,8 @@ logging_steps: 50
 # log_level_replica: info
 
 inf_free: false
-model_name_or_path: bert-base-uncased
-tokenizer_name: bert-base-uncased
+model_name_or_path: Luyu/co-condenser-marco
+tokenizer_name: Luyu/co-condenser-marco
 use_l0: false
 
 max_seq_length: 256
@@ -21,7 +21,7 @@ flops_q_T: 50000
 flops_d_thresh: 150
 flops_q_thresh: 50
 
-output_dir: output/paper/bi/bert-base-uncased/thresh2
+output_dir: output/paper/bi/co-condenser-marco/d-only
 per_device_eval_batch_size: 50
 per_device_train_batch_size: 20
 

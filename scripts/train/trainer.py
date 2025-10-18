@@ -115,9 +115,11 @@ class SparseModelTrainer(Trainer):
             self.data_args.flops_d_lambda, self.data_args.flops_d_T
         )
         d_flops_loss = d_flops * d_lambda
+        enable_flops = True
         if self.data_args.flops_d_thresh is not None:
             if d_avg_len.item() < float(self.data_args.flops_d_thresh):
                 d_flops_loss = torch.tensor(0.0, device=d_rep.device, dtype=d_rep.dtype)
+                enable_flops = False
         flops_loss += d_flops_loss
 
         q_avg_len = (q_rep > 0).sum() / q_rep.shape[0]
@@ -127,11 +129,11 @@ class SparseModelTrainer(Trainer):
                 self.data_args.flops_q_lambda, self.data_args.flops_q_T
             )
             q_flops_loss = q_flops * q_lambda
-            if self.data_args.flops_q_thresh is not None:
-                if q_avg_len.item() < float(self.data_args.flops_q_thresh):
-                    q_flops_loss = torch.tensor(
-                        0.0, device=q_rep.device, dtype=q_rep.dtype
-                    )
+            # gate q flops by d's average length only
+            if not enable_flops:
+                q_flops_loss = torch.tensor(
+                    0.0, device=q_rep.device, dtype=q_rep.dtype
+                )
             flops_loss += q_flops_loss
 
         ranking_loss = 0
