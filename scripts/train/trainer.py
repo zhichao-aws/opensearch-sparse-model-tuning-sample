@@ -131,9 +131,7 @@ class SparseModelTrainer(Trainer):
             q_flops_loss = q_flops * q_lambda
             # gate q flops by d's average length only
             if not enable_flops:
-                q_flops_loss = torch.tensor(
-                    0.0, device=q_rep.device, dtype=q_rep.dtype
-                )
+                q_flops_loss = torch.tensor(0.0, device=q_rep.device, dtype=q_rep.dtype)
             flops_loss += q_flops_loss
 
         ranking_loss = 0
