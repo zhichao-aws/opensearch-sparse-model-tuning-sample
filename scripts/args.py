@@ -34,7 +34,6 @@ class DataTrainingArguments:
     flops_q_lambda: float = field(default=None)
     flops_q_T: float = field(default=None)
     flops_d_thresh: Optional[int] = field(default=None)
-    flops_q_thresh: Optional[int] = field(default=None)
     ranking_loss_weight: float = field(default=1)
     kd_ensemble_teacher_kwargs: Optional[Union[dict, str]] = field(
         default_factory=dict,
