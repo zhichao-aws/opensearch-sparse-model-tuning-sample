@@ -55,7 +55,7 @@ async def ingest(
     if accelerator.is_local_main_process:
         try:
             # delete the index if exist
-            os_client.indices.delete(index_name)
+            os_client.indices.delete(index_name, params={"timeout": 1000})
         except Exception:
             pass
 
