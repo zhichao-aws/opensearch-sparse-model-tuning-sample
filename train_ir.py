@@ -103,7 +103,7 @@ def main():
         num_training_steps=training_args.max_steps,
     )
 
-    if data_args.train_file is not None:
+    if data_args.data_type == "marco" or data_args.train_file is not None:
         dataset = load_dataset(
             path=data_args.train_file,
             cls=data_args.data_type,

@@ -180,4 +180,5 @@ COLLATOR_CLS_MAP = {
     "kd": KnowledgeDistillDataCollator,
     "posnegs": PosNegsDataCollator,
     "kd-ids": KnowledgeDistillIdsDataCollator,
+    "marco": KnowledgeDistillDataCollator,
 }

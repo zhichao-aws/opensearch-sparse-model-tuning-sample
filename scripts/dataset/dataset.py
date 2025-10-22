@@ -1,10 +1,13 @@
+import gzip
 import json
 import logging
 import os
+import pickle
 import random
 from itertools import chain
 
 import numpy as np
+import requests
 from beir import util
 from beir.datasets.data_loader import GenericDataLoader
 from datasets import Dataset as DatasetsDataset
@@ -456,10 +459,96 @@ class CombinedDataset(Dataset):
         return self.datasets[dataset_idx][data_idx]
 
 
+class MsmarcoAccessor:
+    @staticmethod
+    def transform_str(s):
+        try:
+            s = s.encode("latin1").decode("utf-8")
+            return s
+        except Exception:
+            return s
+
+    def _prepare_corpus(self):
+        corpus = datasets_load_dataset("BeIR/msmarco", "corpus", split="corpus")
+        if self.do_transform:
+            corpus = corpus.map(
+                lambda x: {"text": MsmarcoAccessor.transform_str(x["text"])},
+                num_proc=30,
+            )
+        self.corpus = corpus["text"]
+
+    def _prepare_qrels(self):
+        qrels = datasets_load_dataset("BEIR/msmarco-qrels", split="train")
+        self.qrels = {}
+        for sample in tqdm(qrels):
+            q_id = sample["query-id"]
+            d_id = sample["corpus-id"]
+            if q_id not in self.qrels:
+                self.qrels[q_id] = []
+            self.qrels[q_id].append(d_id)
+
+    def _prepare_queries(self):
+        queries = datasets_load_dataset("BeIR/msmarco", "queries", split="queries")
+        self.queries = dict()
+        for sample in tqdm(queries):
+            self.queries[int(sample["_id"])] = sample["text"]
+
+    def __init__(self, do_transform=True):
+        self.do_transform = do_transform
+        self._prepare_corpus()
+        self._prepare_qrels()
+        self._prepare_queries()
+
+
+class MsMarcoScoresFromSentenceTransformers(Dataset):
+    # https://huggingface.co/datasets/sentence-transformers/msmarco-hard-negatives
+    score_cache_dir = ".cache"
+    file_name = "cross-encoder-ms-marco-MiniLM-L-6-v2-scores.pkl.gz"
+    download_url = "https://huggingface.co/datasets/sentence-transformers/msmarco-hard-negatives/resolve/main/cross-encoder-ms-marco-MiniLM-L-6-v2-scores.pkl.gz?download=true"
+
+    def _prepare_score_file(self):
+        if not os.path.exists(self.score_cache_dir):
+            os.makedirs(self.score_cache_dir)
+        if not os.path.exists(os.path.join(self.score_cache_dir, self.file_name)):
+            # download from web
+            logger.info(f"Downloading {self.file_name} from {self.download_url}")
+            response = requests.get(self.download_url)
+            with open(os.path.join(self.score_cache_dir, self.file_name), "wb") as f:
+                f.write(response.content)
+
+    def __init__(self):
+        self.accessor = MsmarcoAccessor(do_transform=False)
+        self._prepare_score_file()
+        with gzip.open(os.path.join(self.score_cache_dir, self.file_name), "rb") as f:
+            self.scores_dict = pickle.load(f)
+        self.queries = list(self.accessor.qrels.keys())
+
+    def __len__(self):
+        return len(self.queries)
+
+    def __getitem__(self, idx):
+        query = self.queries[idx]
+        score_dict_q = self.scores_dict[query]
+        pos_id = random.sample(self.accessor.qrels[query], 1)[0]
+        pos_score = score_dict_q[pos_id]
+        neg_id = None
+        q_ids = list(score_dict_q.keys())
+        while neg_id is None:
+            neg_id = random.sample(q_ids, 1)[0]
+            if neg_id == pos_id:
+                neg_id = None
+
+        neg_score = score_dict_q[neg_id]
+        d_pos = self.accessor.corpus[pos_id]
+        d_neg = self.accessor.corpus[neg_id]
+        return self.accessor.queries[query], [d_pos, d_neg], [pos_score, neg_score]
+
+
 DATASET_CLS_MAP = {
     "kd": KnowledgeDistillDataset,
     "posnegs": PosNegsDataset,
     "kd-ids": KnowledgeDistillIdsDataset,
+    "marco": MsMarcoScoresFromSentenceTransformers,
 }
 
 
@@ -472,6 +561,9 @@ def load_dataset(
     score_scale=1.0,
 ):
     logger.info(f"load dataset from {path}. dataset cls: {DATASET_CLS_MAP[cls]}")
+    if cls == "marco":
+        return MsMarcoScoresFromSentenceTransformers()
+
     return DATASET_CLS_MAP[cls](
         DatasetsDataset.load_from_disk(path),
         sample_num=sample_num_one_query,
