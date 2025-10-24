@@ -516,12 +516,16 @@ class MsMarcoScoresFromSentenceTransformers(Dataset):
             with open(os.path.join(self.score_cache_dir, self.file_name), "wb") as f:
                 f.write(response.content)
 
-    def __init__(self):
+    def __init__(self, score_file_path=None):
         self.accessor = MsmarcoAccessor(do_transform=False)
-        self._prepare_score_file()
-        with gzip.open(os.path.join(self.score_cache_dir, self.file_name), "rb") as f:
+        if score_file_path is None:
+            self._prepare_score_file()
+            score_file_path = os.path.join(self.score_cache_dir, self.file_name)
+        else:
+            logger.info(f"Loading scores from {score_file_path}")
+        with gzip.open(score_file_path, "rb") as f:
             self.scores_dict = pickle.load(f)
-        self.queries = list(self.accessor.qrels.keys())
+        self.queries = [q for q in self.accessor.qrels.keys() if q in self.scores_dict]
 
     def __len__(self):
         return len(self.queries)
@@ -562,7 +566,7 @@ def load_dataset(
 ):
     logger.info(f"load dataset from {path}. dataset cls: {DATASET_CLS_MAP[cls]}")
     if cls == "marco":
-        return MsMarcoScoresFromSentenceTransformers()
+        return MsMarcoScoresFromSentenceTransformers(score_file_path=path)
 
     return DATASET_CLS_MAP[cls](
         DatasetsDataset.load_from_disk(path),
