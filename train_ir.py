@@ -110,6 +110,7 @@ def main():
             swap_times=data_args.swap_times,
             sample_num_one_query=data_args.sample_num_one_query,
             first_rank_thresh=data_args.first_rank_thresh,
+            data_kwargs=data_args.data_kwargs,
         )
     elif data_args.train_file_dir is not None:
         dataset = load_datasets(
@@ -119,6 +120,7 @@ def main():
             swap_times=data_args.swap_times,
             sample_num_one_query=data_args.sample_num_one_query,
             first_rank_thresh=data_args.first_rank_thresh,
+            data_kwargs=data_args.data_kwargs,
         )
     else:
         raise ValueError("train_file or train_file_dir must be specified")

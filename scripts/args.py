@@ -48,6 +48,7 @@ class DataTrainingArguments:
     swap_times: float = field(default=0)
     temperature: float = field(default=1.0)
     score_scale: float = field(default=1.0)
+    data_kwargs: Optional[dict] = field(default_factory=dict)
 
     def __post_init__(self):
         return

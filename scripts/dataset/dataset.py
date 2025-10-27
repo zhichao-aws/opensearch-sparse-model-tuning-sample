@@ -516,8 +516,11 @@ class MsMarcoScoresFromSentenceTransformers(Dataset):
             with open(os.path.join(self.score_cache_dir, self.file_name), "wb") as f:
                 f.write(response.content)
 
-    def __init__(self, score_file_path=None):
-        self.accessor = MsmarcoAccessor(do_transform=False)
+    def __init__(self, score_file_path=None, do_transform=False, **kwargs):
+        self.accessor = MsmarcoAccessor(do_transform=do_transform)
+        logger.info(
+            f"MsMarcoScoresFromSentenceTransformers do transform: {do_transform}"
+        )
         if score_file_path is None:
             self._prepare_score_file()
             score_file_path = os.path.join(self.score_cache_dir, self.file_name)
@@ -563,10 +566,11 @@ def load_dataset(
     sample_num_one_query=2,
     first_rank_thresh=1000,
     score_scale=1.0,
+    data_kwargs=None,
 ):
     logger.info(f"load dataset from {path}. dataset cls: {DATASET_CLS_MAP[cls]}")
     if cls == "marco":
-        return MsMarcoScoresFromSentenceTransformers(score_file_path=path)
+        return MsMarcoScoresFromSentenceTransformers(score_file_path=path, **data_kwargs)
 
     return DATASET_CLS_MAP[cls](
         DatasetsDataset.load_from_disk(path),
@@ -574,6 +578,7 @@ def load_dataset(
         swap_times=swap_times,
         first_rank_thresh=first_rank_thresh,
         score_scale=score_scale,
+        **data_kwargs,
     )
 
 
@@ -585,6 +590,7 @@ def load_datasets(
     sample_num_one_query=2,
     first_rank_thresh=1000,
     score_scale=1.0,
+    data_kwargs=None,
 ):
     datasets = []
     if isinstance(path, str):
@@ -598,6 +604,7 @@ def load_datasets(
                     sample_num_one_query,
                     first_rank_thresh,
                     score_scale,
+                    data_kwargs,
                 )
             )
     else:
@@ -612,6 +619,7 @@ def load_datasets(
                         sample_num_one_query,
                         first_rank_thresh,
                         score_scale,
+                        data_kwargs,
                     )
                 )
 

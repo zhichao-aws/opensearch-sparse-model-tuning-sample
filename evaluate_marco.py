@@ -17,7 +17,7 @@ from transformers import (
 
 from evaluate_beir import get_suffix, load_beir_from_hf, prepare_model_args
 from scripts.args import parse_args
-from scripts.dataset.dataset import HFDatasetWrapper
+from scripts.dataset.dataset import HFDatasetWrapper, MsmarcoAccessor
 from scripts.ingest import ingest
 from scripts.search import search
 from scripts.utils import emit_metrics, get_model, set_logging
@@ -77,7 +77,7 @@ def evaluate_msmarco_dev(model_args, data_args, training_args, model, accelerato
     )
     corpus = HFDatasetWrapper(
         load_dataset("BeIR/msmarco", "corpus", split="corpus"),
-        sample_function=lambda x: (x["_id"], x["text"]),
+        sample_function=lambda x: (x["_id"], MsmarcoAccessor.transform_str(x["text"])),
     )
 
     logger.info(
