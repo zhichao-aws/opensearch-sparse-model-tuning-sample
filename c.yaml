@@ -10,6 +10,8 @@ use_l0: false
 max_seq_length: 256
 data_type: marco
 loss_types: [marginmse]
+data_kwargs:
+  do_transform: true
 sample_num_one_query: 2
 use_in_batch_negatives: false
 flops_start_T: 0
@@ -19,7 +21,7 @@ flops_q_lambda: 8
 flops_q_T: 50000
 flops_d_thresh: 150
 
-output_dir: output/paper/bi/modernbert-base-gte-mean-4w/reproduce
+output_dir: output/paper/bi/modernbert-base-gte-mean-4w/reproduce-transform
 per_device_eval_batch_size: 50
 per_device_train_batch_size: 20
 
