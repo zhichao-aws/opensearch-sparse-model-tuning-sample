@@ -1,18 +1,20 @@
+set -e
+
 DEVICE=8
 TOTAL_BS=2048
-DEVICE_BS=256
+DEVICE_BS=64
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 
 torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
-    --model_name_or_path modernbert-with-gte-vocab \
-    --train_file 'data/*.jsonl' \
+    --model_name_or_path modernbert-wordpiece-mean \
+    --train_file 'data/wikibook*.jsonl' \
     --max_seq_length 128 \
     --mlm_probability 0.3 \
     --per_device_train_batch_size $DEVICE_BS \
     --per_device_eval_batch_size $DEVICE_BS \
     --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
     --do_train \
-    --output_dir pretrain/mdbert-mean-wb-marco \
+    --output_dir pretrain/mdbert-mean-wb \
     --dataloader_drop_last \
     --dataloader_num_workers 8 \
     --logging_steps 50 \
@@ -27,3 +29,5 @@ torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
     --overwrite_output_dir \
     --train_only_embeddings \
     --fp16
+
+bash run_train_eval.sh c.yaml
