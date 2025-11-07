@@ -13,6 +13,7 @@ sample_num_one_query: 2
 use_in_batch_negatives: false
 flops_d_lambda: 0.004
 flops_d_T: 10000
+flops_d_thresh: 150
 
 output_dir: output/paper/woidf/bert-base-uncased/final
 per_device_eval_batch_size: 50
