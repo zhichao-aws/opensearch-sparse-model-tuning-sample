@@ -94,6 +94,7 @@ def evaluate_msmarco_dev(model_args, data_args, training_args, model, accelerato
                 accelerator=accelerator,
                 max_length=data_args.eval_max_seq_length,
                 batch_size=training_args.per_device_eval_batch_size,
+                tokenizer_out=model_args.tokenizer_out,
             )
         )
 
@@ -111,6 +112,7 @@ def evaluate_msmarco_dev(model_args, data_args, training_args, model, accelerato
                 use_two_phase=data_args.use_two_phase,
                 query_prune=data_args.query_prune,
                 result_size=1000,
+                tokenizer_out=model_args.tokenizer_out,
             )
         )
 
@@ -167,6 +169,7 @@ def evaluate_trec_dl(model_args, data_args, training_args, model, accelerator):
                     use_two_phase=data_args.use_two_phase,
                     query_prune=data_args.query_prune,
                     result_size=1000,
+                    tokenizer_out=model_args.tokenizer_out,
                 )
             )
 

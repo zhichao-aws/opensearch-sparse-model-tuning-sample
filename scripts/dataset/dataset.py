@@ -570,7 +570,9 @@ def load_dataset(
 ):
     logger.info(f"load dataset from {path}. dataset cls: {DATASET_CLS_MAP[cls]}")
     if cls == "marco":
-        return MsMarcoScoresFromSentenceTransformers(score_file_path=path, **data_kwargs)
+        return MsMarcoScoresFromSentenceTransformers(
+            score_file_path=path, **data_kwargs
+        )
 
     return DATASET_CLS_MAP[cls](
         DatasetsDataset.load_from_disk(path),

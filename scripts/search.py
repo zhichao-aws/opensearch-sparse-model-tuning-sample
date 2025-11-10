@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Optional
 
 import torch
 from tqdm import tqdm
@@ -24,6 +25,7 @@ async def search(
     use_two_phase: bool = False,
     query_prune: float = 0,
     return_text: bool = False,
+    tokenizer_out: Optional[str] = None,
 ):
     if use_two_phase:
         client = get_os_client()
@@ -50,6 +52,7 @@ async def search(
     query_encoder = SparseEncoder(
         sparse_model=model,
         max_length=max_length,
+        tokenizer_out=tokenizer_out,
         do_count=True,
     )
 

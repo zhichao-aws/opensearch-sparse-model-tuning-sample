@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import os.path
+from typing import Optional
 
 import aiohttp
 import torch
@@ -25,6 +26,7 @@ async def ingest(
     accelerator: Accelerator,
     max_length: int = 512,
     batch_size: int = 50,
+    tokenizer_out: Optional[str] = None,
 ):
     os_client = get_os_client()
     os.makedirs(out_dir, exist_ok=True)
@@ -48,6 +50,7 @@ async def ingest(
     sparse_encoder = SparseEncoder(
         sparse_model=model,
         max_length=max_length,
+        tokenizer_out=tokenizer_out,
         do_count=True,
     )
 

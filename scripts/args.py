@@ -59,6 +59,7 @@ class ModelArguments:
     inf_free: bool = field(default=True)
     model_name_or_path: str = field(default=None)
     tokenizer_name: Optional[str] = field(default=None)
+    tokenizer_out: Optional[str] = field(default=None)
     idf_path: Optional[str] = field(default=None)
     idf_requires_grad: Optional[bool] = field(default=False)
     prune_ratio: Optional[float] = field(default=None)

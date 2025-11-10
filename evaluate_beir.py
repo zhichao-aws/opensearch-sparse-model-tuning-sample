@@ -176,6 +176,7 @@ def evaluate_beir(model_args, data_args, training_args, model, accelerator):
                     accelerator=accelerator,
                     max_length=data_args.eval_max_seq_length,
                     batch_size=training_args.per_device_eval_batch_size,
+                    tokenizer_out=model_args.tokenizer_out,
                 )
             )
 
@@ -192,6 +193,7 @@ def evaluate_beir(model_args, data_args, training_args, model, accelerator):
                     inf_free=model_args.inf_free,
                     use_two_phase=data_args.use_two_phase,
                     query_prune=data_args.query_prune,
+                    tokenizer_out=model_args.tokenizer_out,
                 )
             )
 
@@ -267,6 +269,7 @@ def evaluate_nano_beir(model_args, data_args, training_args, model, accelerator,
                     accelerator=accelerator,
                     max_length=data_args.eval_max_seq_length,
                     batch_size=training_args.per_device_eval_batch_size,
+                    tokenizer_out=model_args.tokenizer_out,
                 )
             )
         if data_args.do_search and accelerator.is_local_main_process:
@@ -281,6 +284,7 @@ def evaluate_nano_beir(model_args, data_args, training_args, model, accelerator,
                     inf_free=model_args.inf_free,
                     use_two_phase=data_args.use_two_phase,
                     query_prune=data_args.query_prune,
+                    tokenizer_out=model_args.tokenizer_out,
                 )
             )
             ndcg, map_, recall, p = EvaluateRetrieval.evaluate(

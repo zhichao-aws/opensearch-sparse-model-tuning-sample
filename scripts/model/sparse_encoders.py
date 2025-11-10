@@ -4,6 +4,8 @@ import logging
 import torch
 import transformers
 
+from .models import *
+
 logger = logging.getLogger(__name__)
 
 
@@ -152,17 +154,26 @@ class SparsePostProcessor(object):
 
 
 class SparseEncoder:
-    def __init__(self, sparse_model, max_length, do_count=True):
+    def __init__(self, sparse_model, max_length, tokenizer_out=None, do_count=True):
         self.model = sparse_model
         self.tokenizer = sparse_model.tokenizer
-        self.post_processor = SparsePostProcessor(tokenizer=sparse_model.tokenizer)
+        if tokenizer_out is None:
+            self.post_processor = SparsePostProcessor(tokenizer=sparse_model.tokenizer)
+        else:
+            self.post_processor = SparsePostProcessor(
+                tokenizer=transformers.AutoTokenizer.from_pretrained(tokenizer_out)
+            )
         self.do_count = do_count
         self.max_length = max_length
         self.device = self.model.backbone.device
-        self.count_tensor = torch.zeros(self.model.vocab_size).to(self.device)
+        self.count_tensor = torch.zeros(self.post_processor.tokenizer.vocab_size).to(
+            self.device
+        )
 
     def reset_count(self):
-        self.count_tensor = torch.zeros(self.model.vocab_size).to(self.device)
+        self.count_tensor = torch.zeros(self.post_processor.tokenizer.vocab_size).to(
+            self.device
+        )
 
     def encode(self, texts, inf_free=False):
         features = self.tokenizer(
@@ -191,5 +202,13 @@ def sparse_embedding_to_query(
             token: weight
             for token, weight in token_weight_map.items()
             if weight > thresh
+        }
+    if len(token_weight_map) > 1024:
+        logger.warning(f"token_weight_map length is too long: {len(token_weight_map)}")
+        token_weight_map = {
+            k: v
+            for k, v in sorted(
+                token_weight_map.items(), key=lambda x: x[1], reverse=True
+            )[:1024]
         }
     return {"neural_sparse": {field_name: {"query_tokens": token_weight_map}}}
