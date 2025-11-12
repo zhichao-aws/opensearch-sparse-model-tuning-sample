@@ -5,29 +5,44 @@ TOTAL_BS=2048
 DEVICE_BS=64
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 
-torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
-    --model_name_or_path modernbert-wordpiece-mean \
-    --train_file 'data/wikibook*.jsonl' \
-    --max_seq_length 128 \
-    --mlm_probability 0.3 \
-    --per_device_train_batch_size $DEVICE_BS \
-    --per_device_eval_batch_size $DEVICE_BS \
-    --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
-    --do_train \
-    --output_dir pretrain/mdbert-mean-wb \
-    --dataloader_drop_last \
-    --dataloader_num_workers 8 \
-    --logging_steps 50 \
-    --max_steps 40000 \
-    --save_steps 20000 \
-    --warmup_steps 4000 \
-    --optim adamw_torch \
-    --report_to tensorboard \
-    --lr_scheduler_type cosine \
-    --learning_rate 3e-4 \
-    --weight_decay 0.01 \
-    --overwrite_output_dir \
-    --train_only_embeddings \
-    --fp16
+BASE_MODEL="ModernBERT-base-scratch"
+BASE_NAME="modernbert-base-scratch"
+STEPS=(5000 10000 20000 40000 80000 120000)
 
-bash run_train_eval.sh c.yaml
+for STEP in "${STEPS[@]}"
+do
+    torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
+        --model_name_or_path $BASE_MODEL \
+        --train_file 'data/wikibook.ml128.jsonl' \
+        --max_seq_length 128 \
+        --mlm_probability 0.3 \
+        --per_device_train_batch_size $DEVICE_BS \
+        --per_device_eval_batch_size $DEVICE_BS \
+        --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
+        --do_train \
+        --output_dir pretrain/$BASE_NAME-$STEP \
+        --dataloader_drop_last \
+        --dataloader_num_workers 8 \
+        --logging_steps 50 \
+        --max_steps $STEP \
+        --save_steps $STEP \
+        --warmup_steps 4000 \
+        --optim adamw_torch \
+        --report_to tensorboard \
+        --lr_scheduler_type cosine \
+        --learning_rate 3e-4 \
+        --weight_decay 0.01 \
+        --overwrite_output_dir \
+        --fp16
+
+    CKPT_PATH="pretrain/$BASE_NAME-$STEP/checkpoint-$STEP"
+    OUT_DIR="output/paper/bi/$BASE_NAME-$STEP/final"
+    YAML_CONFIG="c.yaml"
+
+    git restore $YAML_CONFIG
+    sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${CKPT_PATH}|" "$YAML_CONFIG"
+    sed -i -E "s|^tokenizer_name:.*|tokenizer_name: ${CKPT_PATH}|" "$YAML_CONFIG"
+    sed -i -E "s|^output_dir:.*|output_dir: ${OUT_DIR}|" "$YAML_CONFIG"
+
+    bash run_train_eval.sh $YAML_CONFIG
+done
