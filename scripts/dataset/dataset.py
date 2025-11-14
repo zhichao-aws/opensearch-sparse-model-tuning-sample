@@ -516,7 +516,7 @@ class MsMarcoScoresFromSentenceTransformers(Dataset):
             with open(os.path.join(self.score_cache_dir, self.file_name), "wb") as f:
                 f.write(response.content)
 
-    def __init__(self, score_file_path=None, do_transform=False, **kwargs):
+    def __init__(self, score_file_path=None, do_transform=False, **data_kwargs):
         self.accessor = MsmarcoAccessor(do_transform=do_transform)
         logger.info(
             f"MsMarcoScoresFromSentenceTransformers do transform: {do_transform}"
@@ -529,6 +529,10 @@ class MsMarcoScoresFromSentenceTransformers(Dataset):
         with gzip.open(score_file_path, "rb") as f:
             self.scores_dict = pickle.load(f)
         self.queries = [q for q in self.accessor.qrels.keys() if q in self.scores_dict]
+        self.top_N = None
+        if "top_N" in data_kwargs:
+            self.top_N = data_kwargs["top_N"]
+            logger.info(f"MsMarcoScoresFromSentenceTransformers top_N: {self.top_N}")
 
     def __len__(self):
         return len(self.queries)
@@ -539,7 +543,11 @@ class MsMarcoScoresFromSentenceTransformers(Dataset):
         pos_id = random.sample(self.accessor.qrels[query], 1)[0]
         pos_score = score_dict_q[pos_id]
         neg_id = None
-        q_ids = list(score_dict_q.keys())
+        if self.top_N is not None:
+            score_dict_q_items = sorted(score_dict_q.items(), key=lambda x: x[1], reverse=True)
+            q_ids = [x[0] for x in score_dict_q_items][:self.top_N]
+        else:
+            q_ids = list(score_dict_q.keys())
         while neg_id is None:
             neg_id = random.sample(q_ids, 1)[0]
             if neg_id == pos_id:
