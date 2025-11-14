@@ -6,6 +6,8 @@
 
 import glob
 import os
+import random
+import re
 from typing import Iterator, List, Tuple
 
 import datasets
@@ -66,6 +68,14 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
                 candidates = [line.strip() for line in f if line.strip()]
                 files = self._expand_file_patterns(candidates)
 
+        # Optionally shuffle file order before any iteration/printing
+        shuffle_env = (
+            os.environ.get("JSONL_LOCAL_SHUFFLE_FILES", "false").strip().lower()
+        )
+        if shuffle_env in {"1", "true", "yes", "y", "on"}:
+            random.seed(0)
+            random.shuffle(files)
+        print(f"All files: {files}")
         # No download: files are local paths listed in manifest
         return [
             datasets.SplitGenerator(
@@ -86,6 +96,14 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
         Only include existing files (exclude directories).
         """
         expanded: List[str] = []
+        # Optional: threshold for numeric suffix when using wildcard patterns
+        suffix_max_env = os.environ.get("JSONL_LOCAL_SUFFIX_MAX")
+        suffix_max: int | None = None
+        if suffix_max_env is not None:
+            try:
+                suffix_max = int(suffix_max_env)
+            except Exception:
+                suffix_max = None
         for pattern in candidates:
             has_wildcard = (
                 ("*" in pattern)
@@ -96,6 +114,13 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
             if has_wildcard:
                 matches = glob.glob(pattern, recursive=True)
                 file_matches = [p for p in matches if os.path.isfile(p)]
+                # If threshold is set, filter by parsed numeric suffix. If parsing fails, keep.
+                if suffix_max is not None:
+                    file_matches = [
+                        p
+                        for p in file_matches
+                        if self._accept_file_by_suffix(p, suffix_max)
+                    ]
                 file_matches.sort()
                 expanded.extend(file_matches)
             else:
@@ -114,8 +139,26 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
     def _generate_examples(
         self, files: List[str], split_name: str
     ) -> Iterator[Tuple[str, dict]]:
+        print(f"Generating examples for {split_name} from {files}")
         # validation: every 100th line (global index % 100 == 0)
         # train: the rest
+        # Determine validation ratio via env (default 1%) by converting to a stride: every Nth line goes to validation
+        val_ratio_env = os.environ.get("JSONL_LOCAL_VAL_RATIO")
+        default_ratio = 0.01
+        try:
+            if val_ratio_env is not None:
+                ratio = float(val_ratio_env)
+            else:
+                ratio = default_ratio
+        except Exception:
+            ratio = default_ratio
+        # clamp ratio to (0, 1]
+        if ratio <= 0:
+            ratio = default_ratio
+        if ratio > 1:
+            ratio = 1.0
+        validation_stride = max(1, int(round(1.0 / ratio)))
+
         global_index = 0
         for file_idx, fp in enumerate(files):
             if not os.path.exists(fp):
@@ -140,7 +183,7 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
                         global_index += 1
                         continue
 
-                    is_validation = global_index % 100 == 0
+                    is_validation = global_index % validation_stride == 0
                     if split_name == "validation" and not is_validation:
                         global_index += 1
                         continue
@@ -151,3 +194,29 @@ class JsonlLocal(datasets.GeneratorBasedBuilder):
                     key = f"{file_idx}-{line_idx}"
                     yield key, {"text": row["text"]}
                     global_index += 1
+
+    def _accept_file_by_suffix(self, path: str, max_suffix: int) -> bool:
+        """
+        Return True if the file should be kept under the numeric suffix threshold.
+        Logic:
+        - Strip multi-part extensions (e.g., .json.gz -> base name)
+        - Find the last continuous digit sequence in the remaining base name
+        - If digits are found and parseable, keep only if number <= max_suffix
+        - If parsing fails or digits not found, keep (as requested)
+        """
+        name = os.path.basename(path)
+        base = name
+        # Strip all extensions iteratively (handles .json.gz, .tar.gz, etc.)
+        while True:
+            base_no_ext, ext = os.path.splitext(base)
+            if not ext:
+                break
+            base = base_no_ext
+        match = re.search(r"(\d+)(?!.*\d)", base)
+        if not match:
+            return True
+        try:
+            value = int(match.group(1))
+        except Exception:
+            return True
+        return value <= max_suffix

@@ -28,6 +28,7 @@ do
 
     # Evaluate the model
     torchrun --nproc_per_node=${N_DEVICES} evaluate_beir.py $CONFIG_PATH
+    torchrun --nproc_per_node=${N_DEVICES} evaluate_marco.py $CONFIG_PATH
 
     echo "Completed processing $CONFIG_PATH"
     echo "----------------------------------------"

@@ -46,6 +46,11 @@ def parse_args():
         default=10000,
         help="Batch size for batched tokenization",
     )
+    parser.add_argument(
+        "--train-file",
+        type=str,
+        default=None,
+    )
     return parser.parse_args()
 
 
@@ -55,15 +60,21 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, use_fast=True)
     special_ids = set(tokenizer.all_special_ids or [])
 
-    # 1) load dataset
-    msmarco_corpus = datasets.load_dataset("BeIR/msmarco", "corpus")["corpus"]
+    if args.train_file is not None:
+        msmarco_corpus = datasets.load_dataset("json", data_files=args.train_file)[
+            "train"
+        ]
 
-    # 2) fix occasional text encoding issues
-    msmarco_corpus = msmarco_corpus.map(
-        lambda x: {"text": transform_str(x["text"])},
-        num_proc=30,
-        desc="Normalizing text",
-    )
+    else:
+        # 1) load dataset
+        msmarco_corpus = datasets.load_dataset("BeIR/msmarco", "corpus")["corpus"]
+
+        # 2) fix occasional text encoding issues
+        msmarco_corpus = msmarco_corpus.map(
+            lambda x: {"text": transform_str(x["text"])},
+            num_proc=30,
+            desc="Normalizing text",
+        )
 
     # 3) tokenize in parallel and aggregate DF per batch to reduce later accumulation cost
     def _tokenize_batch(batch):

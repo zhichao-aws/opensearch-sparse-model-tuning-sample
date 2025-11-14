@@ -18,7 +18,7 @@ from transformers import (
 
 from scripts.args import nano_beir_datasets, parse_args
 from scripts.dataset.data_utils import cached
-from scripts.dataset.dataset import BEIRCorpusDataset
+from scripts.dataset.dataset import BEIRCorpusDataset, HFDatasetWrapper
 from scripts.ingest import ingest
 from scripts.search import search
 from scripts.utils import emit_metrics, get_model, set_logging
@@ -51,10 +51,14 @@ def get_suffix(model_args, data_args):
 def load_beir_from_hf(
     dataset_name: str = "nfcorpus",
     split: str = "test",
+    load_corpus: bool = True,
 ) -> Tuple[Dict[str, Dict[str, str]], Dict[str, str], Dict[str, Dict[str, int]]]:
-    ds_corpus = load_dataset(
-        f"BEIR/{dataset_name}", "corpus", split="corpus", trust_remote_code=True
-    )
+    if load_corpus:
+        ds_corpus = load_dataset(
+            f"BEIR/{dataset_name}", "corpus", split="corpus", trust_remote_code=True
+        )
+    else:
+        ds_corpus = None
     ds_queries = load_dataset(
         f"BEIR/{dataset_name}", "queries", split="queries", trust_remote_code=True
     )
@@ -64,8 +68,11 @@ def load_beir_from_hf(
 
     # Build BEIR-style corpus
     corpus: Dict[str, Dict[str, str]] = {}
-    for r in ds_corpus:
-        corpus[str(r["_id"])] = {"title": r["title"], "text": r["text"]}
+    if load_corpus:
+        for r in ds_corpus:
+            corpus[str(r["_id"])] = {"title": r["title"], "text": r["text"]}
+    else:
+        corpus = None
 
     # Build BEIR-style queries
     queries: Dict[str, str] = {}
@@ -147,14 +154,22 @@ def evaluate_beir(model_args, data_args, training_args, model, accelerator):
     }
     avg_res = dict()
     for dataset in datasets:
-        corpus, queries, qrels = load_beir_from_hf(dataset_name=dataset, split="test")
+        _, queries, qrels = load_beir_from_hf(
+            dataset_name=dataset, split="test", load_corpus=False
+        )
+        corpus = HFDatasetWrapper(
+            load_dataset(
+                f"BEIR/{dataset}", "corpus", split="corpus", trust_remote_code=True
+            ),
+            sample_function=lambda x: (x["_id"], x["title"] + " " + x["text"]),
+        )
         logger.info(
             f"Loaded {dataset} with {len(corpus)} documents and {len(queries)} queries"
         )
         if not data_args.skip_ingest:
             asyncio.run(
                 ingest(
-                    dataset=BEIRCorpusDataset(corpus=corpus),
+                    dataset=corpus,
                     model=model,
                     out_dir=beir_eval_dir,
                     index_name=dataset,
@@ -352,6 +367,7 @@ def main():
 
     model = get_model(model_args)
     accelerator = Accelerator(mixed_precision="fp16")
+    accelerator.prepare(model)
     accelerator.wait_for_everyone()
 
     evaluate_beir(model_args, data_args, training_args, model, accelerator)
@@ -369,6 +385,7 @@ def main():
                 model_args.model_name_or_path, "idf.json"
             )
         model = get_model(model_args)
+        accelerator.prepare(model)
         evaluate_nano_beir(
             model_args, data_args, training_args, model, accelerator, step
         )

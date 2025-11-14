@@ -15,6 +15,16 @@ class SparseTrainingLoss:
     def get_loss(self, q_rep, d_rep, inputs):
         return self.weight * self.__call__(q_rep, d_rep, inputs)
 
+    @torch.no_grad()
+    def get_avg_hits(self, q_rep, d_rep):
+        """
+        Return the average number of common non-zero entries per (q, d) pair.
+        """
+        q_bin = (q_rep > 0).to(dtype=torch.float32)  # [bs, dim]
+        d_bin = (d_rep > 0).to(dtype=torch.float32)  # [nd, dim]
+        common = torch.matmul(q_bin, d_bin.t())  # [bs, nd]
+        return common.mean()
+
 
 class KLDivLoss(SparseTrainingLoss):
     def __init__(self, use_in_batch_negatives=False, weight=1, temperature=1.0):

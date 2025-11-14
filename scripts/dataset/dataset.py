@@ -385,6 +385,19 @@ class MiraclTrainingDataset(Dataset):
         }
 
 
+class HFDatasetWrapper(Dataset):
+    def __init__(self, hf_dataset, sample_function):
+        self.hf_dataset = hf_dataset
+        self.sample_function = sample_function
+
+    def __len__(self):
+        return len(self.hf_dataset)
+
+    def __getitem__(self, idx):
+        item = self.hf_dataset[idx]
+        return self.sample_function(item)
+
+
 class CombinedRandomSampler(Sampler):
     def __init__(self, datasets, batch_size, drop_last=True):
         self.datasets = datasets

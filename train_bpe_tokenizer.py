@@ -1,5 +1,6 @@
 import json
 import os
+from enum import Enum
 
 from datasets import load_dataset
 from tokenizers import (
@@ -8,66 +9,114 @@ from tokenizers import (
     models,
     trainers,
 )
-from tokenizers.pre_tokenizers import ByteLevel
+from tokenizers.normalizers import BertNormalizer
+from tokenizers.pre_tokenizers import ByteLevel, Sequence
+from tokenizers.processors import TemplateProcessing
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
 
 
-def batch_iterator(
-    batch_size=1000, num_workers=40, prefetch_factor=5, persistent_workers=True
-):
-    # Only keep the text column to avoid decoding the rest of the columns unnecessarily
-    from torch.utils.data import DataLoader
-
-    dataloader = DataLoader(
-        dataset,
-        num_workers=num_workers,
-        prefetch_factor=prefetch_factor,
-        batch_size=batch_size,
-        persistent_workers=persistent_workers,
-    )
-
-    for batch in dataloader:
-        yield batch["text"]
+class PROCESSING(Enum):
+    ALBERT = 1
+    BERT = 2
+    BERT_METASPACE = 3
 
 
-# use_data_file = True
-# data_file = "data/wikibook.ml128.jsonl"
-# data_name = "dataloader/jsonl_in_seq"
-# os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/*"
-# output_dir = "modernbert-bpe-1"
-
-use_data_file = False
-data_name = "dataloader/jsonl_in_seq"
-data_file = "data/wikibook.ml128.jsonl"
-os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/*"
-output_dir = "modernbert-bpe-full-dl"
+use_data_file = True
+processing = PROCESSING.BERT_METASPACE
+# os.environ["JSONL_LOCAL_FILES"] = "/opt/dlami/nvme/dolma/wiki*,/opt/dlami/nvme/dolma/book*"
+# os.environ["JSONL_LOCAL_SUFFIX_MAX"] = "5"
+output_dir = "modernbert-bpe-bert-10k"
+vocab_size = 10000
+data_files = [
+    os.path.join("/home/ubuntu/tokenizer_corpus/", f)
+    for f in os.listdir("/home/ubuntu/tokenizer_corpus/")
+    if f.startswith("wiki") or f.startswith("book")
+]
+print(data_files)
 
 if use_data_file:
     dataset = load_dataset(
         "json",
-        data_files=data_file,
+        data_files=data_files,
         split="train",
+        num_proc=40,
     )
-    # dataset = dataset.select(range(30000))
+
+    def batch_iterator(batch_size=2000):
+        if len(dataset) < 1e8:
+            texts = dataset["text"]
+            for i in range(0, len(texts), batch_size):
+                yield texts[i : i + batch_size]
+        else:
+            print("batching")
+            batched_dataset = dataset.batch(batch_size)
+            for batch in batched_dataset:
+                yield batch["text"]
+
 else:
     dataset = load_dataset(
-        data_name,
+        "dataloader/jsonl_in_seq",
         split="train",
         streaming=True,
         trust_remote_code=True,
     )
 
+    def batch_iterator(
+        batch_size=1000, num_workers=10, prefetch_factor=5, persistent_workers=True
+    ):
+        # Only keep the text column to avoid decoding the rest of the columns unnecessarily
+        from torch.utils.data import DataLoader
+
+        dataloader = DataLoader(
+            dataset,
+            num_workers=num_workers,
+            prefetch_factor=prefetch_factor,
+            batch_size=batch_size,
+            persistent_workers=persistent_workers,
+        )
+
+        for batch in dataloader:
+            yield batch["text"]
+
+
 albert_tokenizer = AutoTokenizer.from_pretrained("albert-base-v2")
 mdbert_tokenizer = AutoTokenizer.from_pretrained("answerdotai/ModernBERT-large")
+bert_tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 tokenizer = Tokenizer(models.BPE())
-tokenizer.normalizer = albert_tokenizer.backend_tokenizer.normalizer
-tokenizer.pre_tokenizer = mdbert_tokenizer.backend_tokenizer.pre_tokenizer
-tokenizer.pre_tokenizer.add_prefix_space = True
-tokenizer.post_processor = mdbert_tokenizer.backend_tokenizer.post_processor
+
+if processing == PROCESSING.ALBERT:
+    tokenizer.normalizer = albert_tokenizer.backend_tokenizer.normalizer
+    tokenizer.pre_tokenizer = mdbert_tokenizer.backend_tokenizer.pre_tokenizer
+    tokenizer.pre_tokenizer.add_prefix_space = True
+elif processing == PROCESSING.BERT_METASPACE:
+    tokenizer.normalizer = BertNormalizer(
+        clean_text=True,
+        handle_chinese_chars=False,
+        strip_accents=True,
+        lowercase=True,
+    )
+    tokenizer.pre_tokenizer = Sequence(
+        # bert pre_tokenizer = Sequence([WhitespaceSplit(), Punctuation(behavior="isolated")])
+        [bert_tokenizer.backend_tokenizer.pre_tokenizer, ByteLevel()]
+    )
+elif processing == PROCESSING.BERT:
+    tokenizer.normalizer = BertNormalizer(
+        clean_text=True,
+        handle_chinese_chars=False,
+        strip_accents=True,
+        lowercase=True,
+    )
+    tokenizer.pre_tokenizer = Sequence(
+        [
+            bert_tokenizer.backend_tokenizer.pre_tokenizer,
+            ByteLevel(add_prefix_space=False),
+        ]
+    )
+
 trainer = trainers.BpeTrainer(
-    vocab_size=30000,
-    min_frequency=2,
+    vocab_size=vocab_size,
+    min_frequency=10,
     initial_alphabet=ByteLevel.alphabet(),
     special_tokens=list(mdbert_tokenizer.special_tokens_map.values()),
 )
@@ -124,6 +173,38 @@ hf_tokenizer = PreTrainedTokenizerFast(
 
 hf_tokenizer.backend_tokenizer.pre_tokenizer.add_prefix_space = True
 hf_tokenizer.model_max_length = mdbert_tokenizer.model_max_length
+
+# Align post-processor with ModernBERT but bind to current special token ids
+cls_tok = hf_tokenizer.cls_token
+sep_tok = hf_tokenizer.sep_token
+mask_tok = hf_tokenizer.mask_token
+pad_tok = hf_tokenizer.pad_token
+unk_tok = hf_tokenizer.unk_token
+
+cls_id = hf_tokenizer.cls_token_id
+sep_id = hf_tokenizer.sep_token_id
+mask_id = hf_tokenizer.mask_token_id
+pad_id = hf_tokenizer.pad_token_id
+unk_id = hf_tokenizer.unk_token_id
+
+special_token_pairs = []
+for tok, tid in [
+    (cls_tok, cls_id),
+    (sep_tok, sep_id),
+    (mask_tok, mask_id),
+    (pad_tok, pad_id),
+    (unk_tok, unk_id),
+]:
+    if tok is not None and tid is not None:
+        special_token_pairs.append((tok, tid))
+
+template = TemplateProcessing(
+    single=f"{cls_tok}:0 $A:0 {sep_tok}:0",
+    pair=f"{cls_tok}:0 $A:0 {sep_tok}:0 $B:0 {sep_tok}:0",
+    special_tokens=special_token_pairs,
+)
+
+hf_tokenizer.backend_tokenizer.post_processor = template
 hf_tokenizer.save_pretrained(output_dir)
 tokenizer.save(os.path.join(output_dir, "original_config.json"))
 

@@ -39,4 +39,4 @@ msmarco_hard_negatives = msmarco_hard_negatives.map(
 )
 
 # 5) Save to disk (directory will contain the text-only view)
-msmarco_hard_negatives.save_to_disk("data/msmarco_ft")
+msmarco_hard_negatives.save_to_disk("data/msmarco_hard_negatives")

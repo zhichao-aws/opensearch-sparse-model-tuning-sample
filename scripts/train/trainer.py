@@ -73,10 +73,16 @@ class SparseModelTrainer(Trainer):
             return torch.sum(flops_per_average_token)
 
     def get_lambda(self, lambda_value, lambda_T):
-        if self.state.global_step >= lambda_T:
-            return lambda_value
+        start_T = getattr(self.data_args, "flops_start_T", 0) or 0
         step = self.state.global_step + 1
-        return lambda_value * (step / lambda_T) ** 2
+        # warmup delay: lambda is 0 until start_T
+        if step <= start_T:
+            return 0
+        # shifted schedule after start_T
+        shifted_step = step - start_T
+        if shifted_step >= lambda_T:
+            return lambda_value
+        return lambda_value * (shifted_step / lambda_T) ** 2
 
     def compute_loss(
         self, model: SparseModel, inputs, return_outputs=False, num_items_in_batch=None
@@ -102,15 +108,31 @@ class SparseModelTrainer(Trainer):
         q_rep = gather_rep(q_rep, self.accelerator)
         if "scores" in inputs:
             inputs["scores"] = gather_rep(inputs["scores"], self.accelerator)
+        # compute avg lengths
+        d_avg_len = (d_rep > 0).sum() / d_rep.shape[0]
         d_flops = self.flops_value(d_rep, d_rep.shape[0] // q_rep.shape[0])
-        flops_loss += d_flops * self.get_lambda(
+        d_lambda = self.get_lambda(
             self.data_args.flops_d_lambda, self.data_args.flops_d_T
         )
+        d_flops_loss = d_flops * d_lambda
+        enable_flops = True
+        if self.data_args.flops_d_thresh is not None:
+            if d_avg_len.item() < float(self.data_args.flops_d_thresh):
+                d_flops_loss = torch.tensor(0.0, device=d_rep.device, dtype=d_rep.dtype)
+                enable_flops = False
+        flops_loss += d_flops_loss
 
+        q_avg_len = (q_rep > 0).sum() / q_rep.shape[0]
         if not self.model_args.inf_free:
-            flops_loss += self.flops_value(q_rep) * self.get_lambda(
+            q_flops = self.flops_value(q_rep)
+            q_lambda = self.get_lambda(
                 self.data_args.flops_q_lambda, self.data_args.flops_q_T
             )
+            q_flops_loss = q_flops * q_lambda
+            # gate q flops by d's average length only
+            if not enable_flops:
+                q_flops_loss = torch.tensor(0.0, device=q_rep.device, dtype=q_rep.dtype)
+            flops_loss += q_flops_loss
 
         ranking_loss = 0
         for loss_function in self.loss_functions:
@@ -129,12 +151,26 @@ class SparseModelTrainer(Trainer):
 
         if self.state.global_step % self.args.logging_steps == 0:
             logger.info(
-                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss} avg doc length: {(d_rep > 0).sum() / d_rep.shape[0]}"
+                f"Step {self.state.global_step}. ranking loss moving avg:{self.ranking_loss_moving_avg}, d_flops: {d_flops}, flops_loss: {flops_loss}"
             )
+            logger.info(f"avg doc length: {d_avg_len}, avg query length: {q_avg_len}")
             with torch.no_grad():
                 nonzero = d_rep[d_rep > 0]
+                q_nonzero = q_rep[q_rep > 0]
+                # average common non-zero entries per (q, d) pair under current loss setting
+                try:
+                    if len(self.loss_functions) > 0:
+                        avg_common_hits = self.loss_functions[0].get_avg_hits(
+                            q_rep, d_rep
+                        )
+                        logger.info(f"avg common hits per pair: {avg_common_hits}")
+                except Exception as e:
+                    logger.warning(f"avg common hits computation failed: {e}")
                 logger.info(
-                    f"nonzero entries: {torch.mean(nonzero)} {torch.mean(nonzero)} {torch.max(nonzero)}"
+                    f"nonzero entries: {torch.mean(nonzero)} {torch.max(nonzero)}"
+                )
+                logger.info(
+                    f"q_nonzero entries: {torch.mean(q_nonzero)} {torch.max(q_nonzero)}"
                 )
         # DP reduce grad by sum, while DDP reduce grad by mean
         # scale the loss to fix the gap

@@ -40,12 +40,11 @@ async def ingest(
     ddp_dataset = DDPDatasetWithRank(
         dataset, accelerator.local_process_index, accelerator.num_processes
     )
+    dataloader = DataLoader(ddp_dataset, batch_size=batch_size)
     logger.info(
         f"Local rank: {accelerator.local_process_index}, index_name: {index_name}, sample number: {len(ddp_dataset)}"
     )
-    dataloader = DataLoader(ddp_dataset, batch_size=batch_size)
 
-    accelerator.prepare(model)
     sparse_encoder = SparseEncoder(
         sparse_model=model,
         max_length=max_length,
@@ -56,7 +55,7 @@ async def ingest(
     if accelerator.is_local_main_process:
         try:
             # delete the index if exist
-            os_client.indices.delete(index_name)
+            os_client.indices.delete(index_name, params={"timeout": 1000})
         except Exception:
             pass
 
