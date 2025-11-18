@@ -14,6 +14,7 @@ do
     torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
         --model_name_or_path $BASE_MODEL \
         --train_file 'data/wikibook.ml128.jsonl' \
+        --tokenizer_name bert-base-uncased \
         --max_seq_length 128 \
         --mlm_probability 0.3 \
         --per_device_train_batch_size $DEVICE_BS \
