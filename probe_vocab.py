@@ -177,10 +177,12 @@ for finetuned_pt in sorted(os.listdir("output/paper/bi")):
         )
         if len(tokenizer.vocab) != 30522:
             continue
+        model = AutoModelForMaskedLM.from_pretrained(
+            f"output/paper/bi/{finetuned_pt}/final/checkpoint-150000"
+        )
+        stats = get_stats(model)
         print(
-            float(p_token[target_idxs].mean()),
-            float(p_token[additional_idxs].mean()),
-            finetuned_pt,
+            f"{p_token[target_idxs].mean():.6f}, {p_token[additional_idxs].mean():.6f}, {stats[0]:.6f}, {stats[1]:.6f}, {finetuned_pt}"
         )
     except:
         pass
