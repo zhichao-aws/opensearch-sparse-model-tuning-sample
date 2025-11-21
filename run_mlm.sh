@@ -13,7 +13,7 @@ STEPS=(5000 10000)
 git restore $YAML_CONFIG
 sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${BASE_MODEL}|" "$YAML_CONFIG"
 sed -i -E "s|^tokenizer_name:.*|tokenizer_name: ${BASE_MODEL}|" "$YAML_CONFIG"
-sed -i -E "s|^output_dir:.*|output_dir: output/paper/bi/$BASE_NAME-0/final|" "$YAML_CONFIG"
+sed -i -E "s|^output_dir:.*|output_dir: output/paper/bi/$BASE_NAME-3e-5-0/final|" "$YAML_CONFIG"
 
 bash run_train_eval.sh $YAML_CONFIG
 
@@ -29,7 +29,7 @@ do
         --per_device_eval_batch_size $DEVICE_BS \
         --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
         --do_train \
-        --output_dir pretrain/$BASE_NAME-$STEP \
+        --output_dir pretrain/$BASE_NAME-3e-5-$STEP \
         --dataloader_drop_last \
         --dataloader_num_workers 8 \
         --logging_steps 50 \
@@ -39,13 +39,13 @@ do
         --optim adamw_torch \
         --report_to tensorboard \
         --lr_scheduler_type cosine \
-        --learning_rate 3e-4 \
+        --learning_rate 3e-5 \
         --weight_decay 0.01 \
         --overwrite_output_dir \
         --fp16
 
-    CKPT_PATH="pretrain/$BASE_NAME-$STEP/checkpoint-$STEP"
-    OUT_DIR="output/paper/bi/$BASE_NAME-$STEP/final"
+    CKPT_PATH="pretrain/$BASE_NAME-3e-5-$STEP/checkpoint-$STEP"
+    OUT_DIR="output/paper/bi/$BASE_NAME-3e-5-$STEP/final"
 
     git restore $YAML_CONFIG
     sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${CKPT_PATH}|" "$YAML_CONFIG"
