@@ -182,7 +182,7 @@ for finetuned_pt in sorted(os.listdir("output/paper/bi")):
         )
         stats = get_stats(model)
         print(
-            f"{p_token[target_idxs].mean():.6f}, {p_token[additional_idxs].mean():.6f}, {stats[0]:.6f}, {stats[1]:.6f}, {finetuned_pt}"
+            f"{p_token[target_idxs].mean():.6f}, {p_token[additional_idxs].mean():.6f}, {stats[0]:.6f}, {stats[1]:.6f}, {stats[2]:.6f}, {stats[3]:.6f}, {finetuned_pt}"
         )
     except:
         pass

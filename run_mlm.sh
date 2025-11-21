@@ -4,10 +4,18 @@ DEVICE=8
 TOTAL_BS=2048
 DEVICE_BS=64
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
+YAML_CONFIG="c.yaml"
 
-BASE_MODEL="ModernBERT-base-scratch"
-BASE_NAME="modernbert-base-scratch"
-STEPS=(5000 10000 20000 40000 80000 120000)
+BASE_MODEL="mean_v3"
+BASE_NAME="mean_v3"
+STEPS=(5000 10000)
+
+git restore $YAML_CONFIG
+sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${BASE_MODEL}|" "$YAML_CONFIG"
+sed -i -E "s|^tokenizer_name:.*|tokenizer_name: ${BASE_MODEL}|" "$YAML_CONFIG"
+sed -i -E "s|^output_dir:.*|output_dir: output/paper/bi/$BASE_NAME-0/final|" "$YAML_CONFIG"
+
+bash run_train_eval.sh $YAML_CONFIG
 
 for STEP in "${STEPS[@]}"
 do
@@ -38,7 +46,6 @@ do
 
     CKPT_PATH="pretrain/$BASE_NAME-$STEP/checkpoint-$STEP"
     OUT_DIR="output/paper/bi/$BASE_NAME-$STEP/final"
-    YAML_CONFIG="c.yaml"
 
     git restore $YAML_CONFIG
     sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${CKPT_PATH}|" "$YAML_CONFIG"
