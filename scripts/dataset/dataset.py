@@ -544,8 +544,10 @@ class MsMarcoScoresFromSentenceTransformers(Dataset):
         pos_score = score_dict_q[pos_id]
         neg_id = None
         if self.top_N is not None:
-            score_dict_q_items = sorted(score_dict_q.items(), key=lambda x: x[1], reverse=True)
-            q_ids = [x[0] for x in score_dict_q_items][:self.top_N]
+            score_dict_q_items = sorted(
+                score_dict_q.items(), key=lambda x: x[1], reverse=True
+            )
+            q_ids = [x[0] for x in score_dict_q_items][: self.top_N]
         else:
             q_ids = list(score_dict_q.keys())
         while neg_id is None:
