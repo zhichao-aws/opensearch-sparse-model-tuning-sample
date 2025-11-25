@@ -1,11 +1,87 @@
 import argparse
 import json
 import os
+import re
 
 import torch
 from transformers import AutoModelForMaskedLM, AutoTokenizer
 
 from scripts.utils import emit_metrics
+
+
+def parse_log_metrics(log_path, target_step):
+    metrics = {}
+    target_str = f"Step {target_step}."
+
+    found_step = False
+
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        for i, line in enumerate(lines):
+            if not found_step:
+                if target_str in line and "scripts.train.trainer" in line:
+                    found_step = True
+                    match = re.search(r"ranking loss moving avg:([\d\.]+)", line)
+                    if match:
+                        metrics["ranking_loss"] = float(match.group(1))
+
+                    match = re.search(r"d_flops:\s*([\d\.]+)", line)
+                    if match:
+                        metrics["d_flops"] = float(match.group(1))
+
+                    match = re.search(r"flops_loss:\s*([\d\.eE\-\+]+)", line)
+                    if match:
+                        metrics["flops_loss"] = float(match.group(1))
+
+            elif found_step:
+                if "Step" in line or "scripts.train.trainer" not in line:
+                    break
+
+                if "avg doc length" in line:
+                    match_doc = re.search(r"avg doc length:\s*([\d\.]+)", line)
+                    match_query = re.search(r"avg query length:\s*([\d\.]+)", line)
+                    if match_doc:
+                        metrics["avg_doc_length"] = float(match_doc.group(1))
+                    if match_query:
+                        metrics["avg_query_length"] = float(match_query.group(1))
+
+                elif "avg common hits per pair" in line:
+                    match = re.search(r"avg common hits per pair:\s*([\d\.]+)", line)
+                    if match:
+                        metrics["avg_common_hits"] = float(match.group(1))
+
+                elif "nonzero entries" in line and "q_nonzero" not in line:
+                    matches = re.findall(
+                        r"([\d\.]+)", line.split("nonzero entries:")[-1]
+                    )
+                    if len(matches) >= 2:
+                        metrics["nonzero_entries"] = [
+                            float(matches[0]),
+                            float(matches[1]),
+                        ]
+
+                elif "q_nonzero entries" in line:
+                    matches = re.findall(
+                        r"([\d\.]+)", line.split("q_nonzero entries:")[-1]
+                    )
+                    if len(matches) >= 2:
+                        metrics["q_nonzero_entries"] = [
+                            float(matches[0]),
+                            float(matches[1]),
+                        ]
+
+        if not found_step:
+            print(f"Warning: Step {target_step} not found in log file.")
+            return None
+
+        return metrics
+
+    except FileNotFoundError:
+        print(f"Error: File {log_path} not found.")
+        return None
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model_id", type=str, required=False)
@@ -33,14 +109,11 @@ def get_stats(model):
 
 
 if model_id:
-    # 基线模型
     base_model = AutoModelForMaskedLM.from_pretrained(model_id)
     base_stats = get_stats(base_model)
 
-    # 收集各变体在不同阶段的结果（含与基线差值）
     rows = []
 
-    # 先把基线放入表格
     rows.append(
         {
             "variant": model_id,
@@ -62,7 +135,6 @@ if model_id:
 
     for pt in all_pts:
         try:
-            # MLM 预训练后
             mlm_model = AutoModelForMaskedLM.from_pretrained(f"pretrain/{pt}")
             stats_mlm = get_stats(mlm_model)
             rows.append(
@@ -82,7 +154,6 @@ if model_id:
                 }
             )
 
-            # 微调后
             finetuned_pt = [x for x in os.listdir("output/paper/bi") if pt in x][0]
             ft_model = AutoModelForMaskedLM.from_pretrained(
                 f"output/paper/bi/{finetuned_pt}/final/checkpoint-150000"
@@ -189,6 +260,11 @@ for finetuned_pt in sorted(os.listdir("output/paper/bi")):
         print(
             f"{avg_res['NDCG@10']:.6f}, {p_token[target_idxs].mean():.6f}, {p_token[additional_idxs].mean():.6f}, {stats[0]:.6f}, {stats[1]:.6f}, {stats[2]:.6f}, {stats[3]:.6f}, {finetuned_pt}"
         )
+
+        log_path = f"output/paper/bi/{finetuned_pt}/final/train.log"
+        log_metrics_10000 = parse_log_metrics(log_path, 10000)
+        log_metrics_100000 = parse_log_metrics(log_path, 100000)
+
         emit_metrics(
             {
                 "NDCG@10": avg_res["NDCG@10"],
@@ -198,6 +274,10 @@ for finetuned_pt in sorted(os.listdir("output/paper/bi")):
                 "norm_a": f"{stats[1]:.6f}",
                 "bias_t": f"{stats[2]:.6f}",
                 "bias_a": f"{stats[3]:.6f}",
+                "step_10000_act": log_metrics_10000["nonzero_entries"],
+                "step_10000_loss": log_metrics_10000["ranking_loss"],
+                "step_100000_act": log_metrics_100000["nonzero_entries"],
+                "step_100000_loss": log_metrics_100000["ranking_loss"],
             },
             "probe_vocab",
             finetuned_pt,
