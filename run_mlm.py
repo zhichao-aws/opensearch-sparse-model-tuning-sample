@@ -21,13 +21,14 @@ https://huggingface.co/models?filter=fill-mask
 """
 # You can also adapt this script on your own masked language modeling task. Pointers for this are left as comments.
 
+import json
 import logging
 import math
 import os
 import sys
 from dataclasses import dataclass, field
 from itertools import chain
-from typing import Optional
+from typing import Any, List, Optional, Tuple
 
 import datasets
 import evaluate
@@ -267,6 +268,12 @@ class DataTrainingArguments:
         },
     )
     streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
+    additional_tokens: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "A JSON string containing a list of token IDs to mask with double probability."
+        },
+    )
 
     def __post_init__(self):
         if self.streaming:
@@ -295,6 +302,79 @@ class DataTrainingArguments:
                     raise ValueError(
                         "`validation_file` should be a csv, a json or a txt file."
                     )
+
+
+
+@dataclass
+class DataCollatorWithAdditionalTokens(DataCollatorForLanguageModeling):
+    additional_tokens: Optional[List[int]] = None
+
+    def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None) -> Tuple[Any, Any]:
+        """
+        Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
+        """
+        import torch
+
+        labels = inputs.clone()
+
+        # Initialize weights: 1.0 for normal tokens, 2.0 for additional tokens
+        weights = torch.ones(labels.shape, device=labels.device, dtype=torch.float)
+
+        if self.additional_tokens:
+            for token_id in self.additional_tokens:
+                weights.masked_fill_(labels.eq(token_id), 2.0)
+
+        if special_tokens_mask is None:
+            special_tokens_mask = [
+                self.tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
+            ]
+            special_tokens_mask = torch.tensor(special_tokens_mask, dtype=torch.bool, device=labels.device)
+        else:
+            special_tokens_mask = special_tokens_mask.bool()
+
+        # Special tokens get 0 weight
+        weights.masked_fill_(special_tokens_mask, 0.0)
+
+        # Normalize probabilities to maintain the target mlm_probability expectation per sequence
+        num_valid_tokens = (~special_tokens_mask).sum(dim=1, keepdim=True).float()
+        total_weight = weights.sum(dim=1, keepdim=True)
+        target_masks = num_valid_tokens * self.mlm_probability
+
+        # Calculate scaling factor: prob = weight * (target_total / current_total_weight)
+        scaling = target_masks / (total_weight + 1e-8)
+        probability_matrix = weights * scaling
+        probability_matrix.clamp_(min=0.0, max=1.0)
+
+        masked_indices = torch.bernoulli(probability_matrix, generator=self.generator).bool()
+        labels[~masked_indices] = -100  # We only compute loss on masked tokens
+
+        # mask_replace_prob% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+        indices_replaced = (
+            torch.bernoulli(torch.full(labels.shape, self.mask_replace_prob), generator=self.generator).bool()
+            & masked_indices
+        )
+        inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
+
+        if self.mask_replace_prob == 1 or self.random_replace_prob == 0:
+            return inputs, labels
+
+        remaining_prob = 1 - self.mask_replace_prob
+        # scaling the random_replace_prob to the remaining probability for example if
+        # mask_replace_prob = 0.8 and random_replace_prob = 0.1,
+        # then random_replace_prob_scaled = 0.1 / 0.2 = 0.5
+        random_replace_prob_scaled = self.random_replace_prob / remaining_prob
+
+        # random_replace_prob% of the time, we replace masked input tokens with random word
+        indices_random = (
+            torch.bernoulli(torch.full(labels.shape, random_replace_prob_scaled), generator=self.generator).bool()
+            & masked_indices
+            & ~indices_replaced
+        )
+        random_words = torch.randint(len(self.tokenizer), labels.shape, dtype=torch.long, generator=self.generator)
+        inputs[indices_random] = random_words[indices_random]
+
+        # The rest of the time ((1-random_replace_prob-mask_replace_prob)% of the time) we keep the masked input tokens unchanged
+        return inputs, labels
 
 
 def main():
@@ -729,11 +809,22 @@ def main():
         and training_args.fp16
         and not data_args.pad_to_max_length
     )
-    data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
-        mlm_probability=data_args.mlm_probability,
-        pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
-    )
+    if data_args.additional_tokens is not None:
+        with open(data_args.additional_tokens, "r") as f:
+            additional_tokens = json.load(f)
+        data_collator = DataCollatorWithAdditionalTokens(
+            tokenizer=tokenizer,
+            mlm_probability=data_args.mlm_probability,
+            pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
+            additional_tokens=additional_tokens,
+        )
+        logger.info(f"Additional tokens: {tokenizer.convert_ids_to_tokens(additional_tokens)}")
+    else:
+        data_collator = DataCollatorForLanguageModeling(
+            tokenizer=tokenizer,
+            mlm_probability=data_args.mlm_probability,
+            pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
+        )
 
     # Initialize our Trainer
     trainer = Trainer(

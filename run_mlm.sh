@@ -6,17 +6,16 @@ DEVICE_BS=64
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 YAML_CONFIG="c.yaml"
 
-BASE_MODEL="mean_v3"
-BASE_NAME="mean_v3"
-STEPS=(5000 10000)
+BASE_MODEL="bert-vocab"
+BASE_NAME=$BASE_MODEL
+SUFFIX="addi2"
 
-git restore $YAML_CONFIG
 sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${BASE_MODEL}|" "$YAML_CONFIG"
 sed -i -E "s|^tokenizer_name:.*|tokenizer_name: ${BASE_MODEL}|" "$YAML_CONFIG"
-sed -i -E "s|^output_dir:.*|output_dir: output/paper/bi/$BASE_NAME-3e-5-0/final|" "$YAML_CONFIG"
-
+sed -i -E "s|^output_dir:.*|output_dir: output/paper/bi/$BASE_NAME-$SUFFIX-0/final|" "$YAML_CONFIG"
 bash run_train_eval.sh $YAML_CONFIG
 
+STEPS=(5000 10000 20000)
 for STEP in "${STEPS[@]}"
 do
     torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
@@ -29,7 +28,7 @@ do
         --per_device_eval_batch_size $DEVICE_BS \
         --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
         --do_train \
-        --output_dir pretrain/$BASE_NAME-3e-5-$STEP \
+        --output_dir pretrain/$BASE_NAME-$SUFFIX-$STEP \
         --dataloader_drop_last \
         --dataloader_num_workers 8 \
         --logging_steps 50 \
@@ -39,13 +38,14 @@ do
         --optim adamw_torch \
         --report_to tensorboard \
         --lr_scheduler_type cosine \
-        --learning_rate 3e-5 \
+        --learning_rate 3e-4 \
         --weight_decay 0.01 \
         --overwrite_output_dir \
-        --fp16
+        --fp16 \
+        --additional_tokens "additional_tokens.json"
 
-    CKPT_PATH="pretrain/$BASE_NAME-3e-5-$STEP/checkpoint-$STEP"
-    OUT_DIR="output/paper/bi/$BASE_NAME-3e-5-$STEP/final"
+    CKPT_PATH="pretrain/$BASE_NAME-$SUFFIX-$STEP/checkpoint-$STEP"
+    OUT_DIR="output/paper/bi/$BASE_NAME-$SUFFIX-$STEP/final"
 
     git restore $YAML_CONFIG
     sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${CKPT_PATH}|" "$YAML_CONFIG"
