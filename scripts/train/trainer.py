@@ -72,6 +72,9 @@ class SparseModelTrainer(Trainer):
             flops_per_average_token = torch.mean(mask * w_j_per_doc, dim=0) ** 2
             return torch.sum(flops_per_average_token)
 
+    def l1_value(self, representation):
+        return torch.sum(torch.mean(torch.abs(representation), dim=0))
+
     def get_lambda(self, lambda_value, lambda_T):
         start_T = getattr(self.data_args, "flops_start_T", 0) or 0
         step = self.state.global_step + 1
@@ -110,7 +113,10 @@ class SparseModelTrainer(Trainer):
             inputs["scores"] = gather_rep(inputs["scores"], self.accelerator)
         # compute avg lengths
         d_avg_len = (d_rep > 0).sum() / d_rep.shape[0]
-        d_flops = self.flops_value(d_rep, d_rep.shape[0] // q_rep.shape[0])
+        if self.data_args.reg_type == "l1":
+            d_flops = self.l1_value(d_rep)
+        else:
+            d_flops = self.flops_value(d_rep, d_rep.shape[0] // q_rep.shape[0])
         d_lambda = self.get_lambda(
             self.data_args.flops_d_lambda, self.data_args.flops_d_T
         )
@@ -124,7 +130,10 @@ class SparseModelTrainer(Trainer):
 
         q_avg_len = (q_rep > 0).sum() / q_rep.shape[0]
         if not self.model_args.inf_free:
-            q_flops = self.flops_value(q_rep)
+            if self.data_args.reg_type == "l1":
+                q_flops = self.l1_value(q_rep)
+            else:
+                q_flops = self.flops_value(q_rep)
             q_lambda = self.get_lambda(
                 self.data_args.flops_q_lambda, self.data_args.flops_q_T
             )

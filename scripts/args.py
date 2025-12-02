@@ -45,6 +45,7 @@ class DataTrainingArguments:
     do_search: bool = field(default=True)
     query_prune: float = field(default=0)
     flops_threshold: int = field(default=None)
+    reg_type: str = field(default="flops")
     swap_times: float = field(default=0)
     temperature: float = field(default=1.0)
     score_scale: float = field(default=1.0)
