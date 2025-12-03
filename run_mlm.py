@@ -172,6 +172,15 @@ class ModelArguments:
             )
         },
     )
+    logits_l1_weight: float = field(
+        default=0.0,
+        metadata={
+            "help": (
+                "Weight for L1 penalty applied to positive logits (ReLU(logits)). "
+                "Set to 0.0 to disable."
+            )
+        },
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (
@@ -375,6 +384,34 @@ class DataCollatorWithAdditionalTokens(DataCollatorForLanguageModeling):
 
         # The rest of the time ((1-random_replace_prob-mask_replace_prob)% of the time) we keep the masked input tokens unchanged
         return inputs, labels
+
+
+class L1RegularizedTrainer(Trainer):
+    def __init__(self, logits_l1_weight: float = 0.0, **kwargs):
+        super().__init__(**kwargs)
+        self.logits_l1_weight = float(logits_l1_weight) if logits_l1_weight is not None else 0.0
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        """
+        Add L1 regularization on positive logits (ReLU(logits)).
+        """
+        outputs = model(**inputs)
+        loss = outputs.get("loss") if isinstance(outputs, dict) else getattr(outputs, "loss", None)
+        if loss is None:
+            # Fallback to parent implementation if needed (rare for HF models with labels)
+            return super().compute_loss(model, inputs, return_outputs)
+
+        if self.logits_l1_weight > 0.0:
+            logits = outputs.get("logits") if isinstance(outputs, dict) else getattr(outputs, "logits", None)
+            if logits is not None:
+                # L1 on positive activations only -> mean(ReLU(logits))
+                l1_term = torch.relu(logits).mean()
+                # log mlm loss and l1 loss every 100 steps
+                if self.state.global_step % 100 == 0:
+                    logger.info(f"MLM loss: {loss}, L1 loss: {l1_term}")
+                loss = loss + self.logits_l1_weight * l1_term
+
+        return (loss, outputs) if return_outputs else loss
 
 
 def main():
@@ -827,7 +864,7 @@ def main():
         )
 
     # Initialize our Trainer
-    trainer = Trainer(
+    trainer = L1RegularizedTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
@@ -844,6 +881,7 @@ def main():
             if training_args.do_eval and not is_torch_xla_available()
             else None
         ),
+        logits_l1_weight=model_args.logits_l1_weight,
     )
 
     # Training
