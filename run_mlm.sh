@@ -2,13 +2,13 @@ set -e
 
 DEVICE=8
 TOTAL_BS=2048
-DEVICE_BS=256
+DEVICE_BS=64
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 YAML_CONFIG="c.yaml"
 
 BASE_MODEL="bert-vocab-sb-tn"
 BASE_NAME=$BASE_MODEL
-SUFFIX="VT-emb"
+SUFFIX="VT-emb-b5"
 DO_TRAIN_STEP_0=false
 
 if [ "$DO_TRAIN_STEP_0" = true ]; then
@@ -18,7 +18,7 @@ if [ "$DO_TRAIN_STEP_0" = true ]; then
     bash run_train_eval.sh $YAML_CONFIG
 fi
 
-STEPS=(5000 10000 20000)
+STEPS=(20000 10000 5000)
 for STEP in "${STEPS[@]}"
 do
     torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
@@ -47,7 +47,6 @@ do
         --fp16 \
         --additional_tokens "additional_tokens_v2.json" \
         --log_level info \
-        --logits_l1_weight 0.01 \
         --train_only_embeddings
 
     CKPT_PATH="pretrain/$BASE_NAME-$SUFFIX-$STEP/checkpoint-$STEP"

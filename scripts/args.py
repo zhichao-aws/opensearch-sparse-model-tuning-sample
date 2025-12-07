@@ -66,6 +66,7 @@ class ModelArguments:
     prune_ratio: Optional[float] = field(default=None)
     preprocess_func: Optional[str] = field(default=None)
     use_l0: bool = field(default=False)
+    bias_change: Optional[float] = field(default=None)
 
     def __post_init__(self):
         if self.tokenizer_name is None:

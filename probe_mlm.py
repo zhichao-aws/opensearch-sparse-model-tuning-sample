@@ -29,7 +29,7 @@ def get_sparse_rep(logits, attention_mask):
 def main():
     parser = argparse.ArgumentParser(description="Calculate MLM loss on the first 2,000 documents of MS MARCO.")
     parser.add_argument("--model_id", type=str, required=True, help="Path or Hugging Face ID of the model")
-    parser.add_argument("--tokenizer_id", type=str, required=True, help="Path or Hugging Face ID of the tokenizer")
+    parser.add_argument("--tokenizer_id", type=str, default="bert-base-uncased", help="Path or Hugging Face ID of the tokenizer")
     
     args = parser.parse_args()
 
@@ -105,6 +105,9 @@ def main():
     total_input_token_weight_mean = 0.0
     input_token_weight_batches_count = 0
 
+    # Accumulator for max logits distribution
+    all_max_logits = []
+
     print("Calculating MLM loss and Stats...")
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluating"):
@@ -119,6 +122,12 @@ def main():
             logits = outputs.logits
             total_logits_mean += torch.mean(logits).item()
             total_logits_std += torch.std(logits).item()
+
+            # Calculate max logits for distribution stats
+            # torch.max(logits * attention_mask.unsqueeze(-1), dim=1)
+            # Note: We use batch['attention_mask'] directly
+            batch_max_values, _ = torch.max(logits * batch['attention_mask'].unsqueeze(-1), dim=1)
+            all_max_logits.append(batch_max_values.detach().cpu())
 
             # 1. Get Sparse Representation (d_rep)
             # Need attention mask (which is present in batch)
@@ -194,6 +203,21 @@ def main():
     avg_logits_std = total_logits_std / total_batches
     avg_input_token_weight = total_input_token_weight_mean / input_token_weight_batches_count if input_token_weight_batches_count > 0 else 0.0
     
+    # Calculate Max Logits Stats
+    if all_max_logits:
+        all_max_logits_tensor = torch.cat(all_max_logits, dim=0).float()
+        # Flatten for global stats
+        max_logits_mean = torch.mean(all_max_logits_tensor).item()
+        
+        # Use numpy for quantiles to avoid "input tensor is too large" error in torch
+        all_max_logits_np = all_max_logits_tensor.view(-1).numpy()
+        max_logits_p50 = np.percentile(all_max_logits_np, 50).item()
+        max_logits_p90 = np.percentile(all_max_logits_np, 90).item()
+    else:
+        max_logits_mean = 0.0
+        max_logits_p50 = 0.0
+        max_logits_p90 = 0.0
+    
     print(f"\nResults:")
     print(f"Processed {len(dataset)} documents.")
     print(f"Average MLM Loss: {avg_loss:.6f}")
@@ -205,6 +229,9 @@ def main():
     print(f"Average Logits Mean: {avg_logits_mean:.6f}")
     print(f"Average Logits Std: {avg_logits_std:.6f}")
     print(f"Average Input Token Weight: {avg_input_token_weight:.6f}")
+    print(f"Max Logits Mean: {max_logits_mean:.6f}")
+    print(f"Max Logits P50: {max_logits_p50:.6f}")
+    print(f"Max Logits P90: {max_logits_p90:.6f}")
 
 if __name__ == "__main__":
     main()

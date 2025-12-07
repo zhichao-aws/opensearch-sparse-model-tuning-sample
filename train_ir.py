@@ -55,6 +55,8 @@ def main():
 
     # model
     model = get_model(model_args)
+    if model_args.bias_change is not None:
+        model.get_output_embeddings().bias.data += model_args.bias_change
 
     # data collator
     data_collator = COLLATOR_CLS_MAP[data_args.data_type](
