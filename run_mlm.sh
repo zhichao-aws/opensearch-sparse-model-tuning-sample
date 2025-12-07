@@ -2,14 +2,14 @@ set -e
 
 DEVICE=8
 TOTAL_BS=2048
-DEVICE_BS=64
+DEVICE_BS=256
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 YAML_CONFIG="c.yaml"
 
 BASE_MODEL="bert-vocab-sb-tn"
 BASE_NAME=$BASE_MODEL
-SUFFIX="VT"
-DO_TRAIN_STEP_0=true
+SUFFIX="VT-emb"
+DO_TRAIN_STEP_0=false
 
 if [ "$DO_TRAIN_STEP_0" = true ]; then
     sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${BASE_MODEL}|" "$YAML_CONFIG"
@@ -23,9 +23,9 @@ for STEP in "${STEPS[@]}"
 do
     torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
         --model_name_or_path $BASE_MODEL \
-        --train_file 'data/wiki.ml256.jsonl' \
+        --train_file 'data/wikibook.ml128.jsonl' \
         --tokenizer_name bert-base-uncased \
-        --max_seq_length 256 \
+        --max_seq_length 128 \
         --mlm_probability 0.3 \
         --per_device_train_batch_size $DEVICE_BS \
         --per_device_eval_batch_size $DEVICE_BS \
@@ -47,7 +47,8 @@ do
         --fp16 \
         --additional_tokens "additional_tokens_v2.json" \
         --log_level info \
-        --logits_l1_weight 0.01
+        --logits_l1_weight 0.01 \
+        --train_only_embeddings
 
     CKPT_PATH="pretrain/$BASE_NAME-$SUFFIX-$STEP/checkpoint-$STEP"
     OUT_DIR="output/paper/bi/$BASE_NAME-$SUFFIX-$STEP/final"

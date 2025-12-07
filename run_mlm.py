@@ -404,11 +404,15 @@ class L1RegularizedTrainer(Trainer):
         if self.logits_l1_weight > 0.0:
             logits = outputs.get("logits") if isinstance(outputs, dict) else getattr(outputs, "logits", None)
             if logits is not None:
-                # L1 on positive activations only -> mean(ReLU(logits))
-                l1_term = torch.relu(logits).mean()
+                # L1 on positive activations only -> mean(ReLU(logits + 1))
+                l1_term = torch.relu(logits + 1).mean()
                 # log mlm loss and l1 loss every 100 steps
                 if self.state.global_step % 100 == 0:
-                    logger.info(f"MLM loss: {loss}, L1 loss: {l1_term}")
+                    # User requested to log based on ReLU(logits)
+                    relu_logits_log = torch.relu(logits)
+                    l1_term_log = relu_logits_log.mean()
+                    l0_term = (relu_logits_log > 0).float().sum(dim=-1).mean()
+                    logger.info(f"MLM loss: {loss}, L1 loss: {l1_term_log}, L0: {l0_term}")
                 loss = loss + self.logits_l1_weight * l1_term
 
         return (loss, outputs) if return_outputs else loss
