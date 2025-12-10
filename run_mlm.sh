@@ -6,10 +6,10 @@ DEVICE_BS=64
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 YAML_CONFIG="c.yaml"
 
-BASE_MODEL="bert-vocab-sb-tn"
+BASE_MODEL="bert-vocab-tn"
 BASE_NAME=$BASE_MODEL
-SUFFIX="VT-emb-b5"
-DO_TRAIN_STEP_0=false
+SUFFIX="VT-b5"
+DO_TRAIN_STEP_0=true
 
 if [ "$DO_TRAIN_STEP_0" = true ]; then
     sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${BASE_MODEL}|" "$YAML_CONFIG"
@@ -18,7 +18,7 @@ if [ "$DO_TRAIN_STEP_0" = true ]; then
     bash run_train_eval.sh $YAML_CONFIG
 fi
 
-STEPS=(20000 10000 5000)
+STEPS=(20000)
 for STEP in "${STEPS[@]}"
 do
     torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
@@ -46,8 +46,7 @@ do
         --overwrite_output_dir \
         --fp16 \
         --additional_tokens "additional_tokens_v2.json" \
-        --log_level info \
-        --train_only_embeddings
+        --log_level info
 
     CKPT_PATH="pretrain/$BASE_NAME-$SUFFIX-$STEP/checkpoint-$STEP"
     OUT_DIR="output/paper/bi/$BASE_NAME-$SUFFIX-$STEP/final"
