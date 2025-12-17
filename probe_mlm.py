@@ -211,12 +211,16 @@ def main():
         
         # Use numpy for quantiles to avoid "input tensor is too large" error in torch
         all_max_logits_np = all_max_logits_tensor.view(-1).numpy()
-        max_logits_p50 = np.percentile(all_max_logits_np, 50).item()
-        max_logits_p90 = np.percentile(all_max_logits_np, 90).item()
+        
+        percentiles = list(range(50, 95, 5))
+        max_logits_percentiles = {}
+        for p in percentiles:
+            max_logits_percentiles[p] = np.percentile(all_max_logits_np, p).item()
+
     else:
         max_logits_mean = 0.0
-        max_logits_p50 = 0.0
-        max_logits_p90 = 0.0
+        percentiles = list(range(50, 95, 5))
+        max_logits_percentiles = {p: 0.0 for p in percentiles}
     
     print(f"\nResults:")
     print(f"Processed {len(dataset)} documents.")
@@ -230,8 +234,8 @@ def main():
     print(f"Average Logits Std: {avg_logits_std:.6f}")
     print(f"Average Input Token Weight: {avg_input_token_weight:.6f}")
     print(f"Max Logits Mean: {max_logits_mean:.6f}")
-    print(f"Max Logits P50: {max_logits_p50:.6f}")
-    print(f"Max Logits P90: {max_logits_p90:.6f}")
+    for p in percentiles:
+        print(f"Max Logits P{p}: {max_logits_percentiles[p]:.6f}")
 
 if __name__ == "__main__":
     main()

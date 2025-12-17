@@ -166,12 +166,12 @@ class SparseEncoder:
         self.do_count = do_count
         self.max_length = max_length
         self.device = self.model.backbone.device
-        self.count_tensor = torch.zeros(self.post_processor.tokenizer.vocab_size).to(
+        self.count_tensor = torch.zeros(len(self.post_processor.tokenizer.vocab)).to(
             self.device
         )
 
     def reset_count(self):
-        self.count_tensor = torch.zeros(self.post_processor.tokenizer.vocab_size).to(
+        self.count_tensor = torch.zeros(len(self.post_processor.tokenizer.vocab)).to(
             self.device
         )
 
