@@ -32,7 +32,8 @@ class SAPTrainer(Trainer):
 
     def splade_encode(self, model, input_ids, attention_mask):
         output = model(input_ids=input_ids, attention_mask=attention_mask)[0]
-        values, _ = torch.max(output * attention_mask.unsqueeze(-1), dim=1)
+        output.masked_fill_((attention_mask == 0).unsqueeze(-1), -torch.inf)
+        values, _ = torch.max(output, dim=1)
         return values
 
     def compute_loss(

@@ -27,9 +27,8 @@ class BiSparseModel(torch.nn.Module):
 
     def forward(self, **kwargs):
         output = self.backbone(**kwargs)[0]
-        values, _ = torch.max(
-            output * kwargs.get("attention_mask").unsqueeze(-1), dim=1
-        )
+        output.masked_fill_((kwargs.get("attention_mask") == 0).unsqueeze(-1), -torch.inf)
+        values, _ = torch.max(output, dim=1)
         values = torch.log(1 + torch.relu(values))
         values[:, self.special_token_ids] = 0
         return values

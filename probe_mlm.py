@@ -18,8 +18,9 @@ def get_sparse_rep(logits, attention_mask):
     # logits: (batch, seq_len, vocab_size)
     # attention_mask: (batch, seq_len)
     
-    # values, _ = torch.max(output * kwargs.get("attention_mask").unsqueeze(-1), dim=1)
-    values, _ = torch.max(logits * attention_mask.unsqueeze(-1), dim=1)
+    # values, _ = torch.max(logits * attention_mask.unsqueeze(-1), dim=1)
+    logits.masked_fill_((attention_mask == 0).unsqueeze(-1), -torch.inf)
+    values, _ = torch.max(logits, dim=1)
     
     # values = torch.log1p(torch.relu(values))
     values = torch.log1p(torch.relu(values))
@@ -126,7 +127,8 @@ def main():
             # Calculate max logits for distribution stats
             # torch.max(logits * attention_mask.unsqueeze(-1), dim=1)
             # Note: We use batch['attention_mask'] directly
-            batch_max_values, _ = torch.max(logits * batch['attention_mask'].unsqueeze(-1), dim=1)
+            logits.masked_fill_((batch['attention_mask'] == 0).unsqueeze(-1), -torch.inf)
+            batch_max_values, _ = torch.max(logits, dim=1)
             all_max_logits.append(batch_max_values.detach().cpu())
 
             # 1. Get Sparse Representation (d_rep)
