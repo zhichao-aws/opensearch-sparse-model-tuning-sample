@@ -51,6 +51,11 @@ def parse_args():
         type=str,
         default=None,
     )
+    parser.add_argument(
+        "--lowercase",
+        action="store_true",
+        help="Lowercase input text before tokenization",
+    )
     return parser.parse_args()
 
 
@@ -78,8 +83,12 @@ def main():
 
     # 3) tokenize in parallel and aggregate DF per batch to reduce later accumulation cost
     def _tokenize_batch(batch):
+        texts = batch["text"]
+        if args.lowercase:
+            texts = [t.lower() if t else t for t in texts]
+
         encodings = tokenizer(
-            batch["text"],
+            texts,
             add_special_tokens=False,
             truncation=False,
             return_attention_mask=False,
