@@ -28,9 +28,10 @@ def get_sparse_rep(logits, attention_mask):
     return values
 
 def main():
-    parser = argparse.ArgumentParser(description="Calculate MLM loss on the first 2,000 documents of MS MARCO.")
+    parser = argparse.ArgumentParser(description="Calculate MLM loss on the first 2,000 documents of a BeIR dataset.")
     parser.add_argument("--model_id", type=str, required=True, help="Path or Hugging Face ID of the model")
     parser.add_argument("--tokenizer_id", type=str, default="bert-base-uncased", help="Path or Hugging Face ID of the tokenizer")
+    parser.add_argument("--dataset", type=str, default="msmarco", help="BeIR dataset name (default: msmarco)")
     
     args = parser.parse_args()
 
@@ -38,8 +39,8 @@ def main():
     set_seed(42)
 
     # 2. Load Dataset
-    print("Loading MS MARCO corpus...")
-    corpus = load_dataset("BeIR/msmarco", "corpus", split="corpus")
+    print(f"Loading {args.dataset} corpus...")
+    corpus = load_dataset(f"BeIR/{args.dataset}", "corpus", split="corpus")
     
     # Select first 2,000 documents
     print("Selecting first 2,000 documents...")

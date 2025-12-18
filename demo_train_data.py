@@ -22,6 +22,7 @@ def main():
     accelerator = Accelerator(mixed_precision="fp16")
     accelerator.wait_for_everyone()
     model = get_model(model_args)
+    accelerator.prepare(model)
 
     dataset = data_args.beir_datasets.split(",")
     if len(dataset) != 1:
