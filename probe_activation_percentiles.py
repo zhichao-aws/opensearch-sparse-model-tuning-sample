@@ -212,7 +212,7 @@ def main() -> None:
             print(f"P{p}: {pct[p]:.6f}")
 
     if args.cut_percent is not None:
-        key = "input_token_logit"
+        key = "sparse_activation"
         if key in samples and samples[key]:
             arr = np.concatenate(samples[key], axis=0)
             cutoff_value = float(np.percentile(arr, args.cut_percent))
