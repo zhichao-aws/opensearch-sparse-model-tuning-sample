@@ -60,6 +60,7 @@ def main() -> None:
         help="tokenizer 路径或 HF ID",
     )
     parser.add_argument("--dataset", type=str, default="msmarco", help="BeIR 数据集名")
+    parser.add_argument("--data_file", type=str, default=None, help="本地 jsonl 文件路径，若指定则优先使用此文件")
     parser.add_argument("--num_docs", type=int, default=20000)
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=64)
@@ -89,6 +90,13 @@ def main() -> None:
         action="store_true",
         help="是否把 0 激活也纳入 sparse activation 分布（默认只统计 >0）。",
     )
+    parser.add_argument(
+        "--cut_percent",
+        type=float,
+        default=None,
+        help="If set (e.g. 50), subtract the P(cut_percent) activation value from the model bias.",
+    )
+    parser.add_argument("--save_path", type=str, default=None, help="Path to save the modified model.")
 
     args = parser.parse_args()
 
@@ -96,8 +104,12 @@ def main() -> None:
 
     percentiles = parse_percentiles(args.percentiles)
 
-    print(f"Loading BeIR/{args.dataset} corpus...")
-    corpus = load_dataset(f"BeIR/{args.dataset}", "corpus", split="corpus")
+    if args.data_file:
+        print(f"Loading data from file: {args.data_file}")
+        corpus = load_dataset("json", data_files=args.data_file, split="train")
+    else:
+        print(f"Loading BeIR/{args.dataset} corpus...")
+        corpus = load_dataset(f"BeIR/{args.dataset}", "corpus", split="corpus")
 
     n = min(args.num_docs, len(corpus))
     print(f"Selecting first {n} documents...")
@@ -198,6 +210,29 @@ def main() -> None:
         print(f"count={stats['count']} mean={stats['mean']:.6f} std={stats['std']:.6f}")
         for p in percentiles:
             print(f"P{p}: {pct[p]:.6f}")
+
+    if args.cut_percent is not None:
+        key = "input_token_logit"
+        if key in samples and samples[key]:
+            arr = np.concatenate(samples[key], axis=0)
+            cutoff_value = float(np.percentile(arr, args.cut_percent))
+            print(f"\nApplying cut: subtracting P{args.cut_percent} ({cutoff_value:.6f}) from output embeddings bias...")
+
+            output_embeddings = model.get_output_embeddings()
+            if hasattr(output_embeddings, "bias") and output_embeddings.bias is not None:
+                # 减去 cutoff
+                with torch.no_grad():
+                    output_embeddings.bias.data -= cutoff_value
+                print(f"Done. Subtracted {cutoff_value:.6f} from bias.")
+
+                if args.save_path:
+                    print(f"Saving modified model to {args.save_path}")
+                    model.save_pretrained(args.save_path)
+                    tokenizer.save_pretrained(args.save_path)
+            else:
+                print("Warning: Could not find bias in output embeddings (model.get_output_embeddings().bias).")
+        else:
+            print(f"\nWarning: Cannot apply cut because no samples found for {key}.")
 
 
 if __name__ == "__main__":

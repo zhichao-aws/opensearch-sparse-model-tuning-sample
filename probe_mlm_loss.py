@@ -30,6 +30,7 @@ def main() -> None:
         help="tokenizer 路径或 HF ID",
     )
     parser.add_argument("--dataset", type=str, default="msmarco", help="BeIR 数据集名")
+    parser.add_argument("--data_file", type=str, default=None, help="本地 jsonl 文件路径，若指定则优先使用此文件")
     parser.add_argument("--num_docs", type=int, default=2000, help="取前多少篇文档")
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=16)
@@ -40,8 +41,13 @@ def main() -> None:
 
     set_seed(args.seed)
 
-    print(f"Loading BeIR/{args.dataset} corpus...")
-    corpus = load_dataset(f"BeIR/{args.dataset}", "corpus", split="corpus")
+    if args.data_file:
+        print(f"Loading data from file: {args.data_file}")
+        # load_dataset("json", data_files=...) 默认生成 train split
+        corpus = load_dataset("json", data_files=args.data_file, split="train")
+    else:
+        print(f"Loading BeIR/{args.dataset} corpus...")
+        corpus = load_dataset(f"BeIR/{args.dataset}", "corpus", split="corpus")
 
     n = min(args.num_docs, len(corpus))
     print(f"Selecting first {n} documents...")
