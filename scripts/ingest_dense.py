@@ -1,20 +1,21 @@
-import logging
-import os
 import asyncio
-from typing import Optional, List
+import logging
+
 import aiohttp
+from accelerate import Accelerator
 from aiohttp import ClientTimeout
-from tqdm.auto import tqdm
 from sentence_transformers import SentenceTransformer
 from torch.utils.data import DataLoader, Dataset
-from accelerate import Accelerator
+from tqdm.auto import tqdm
+
 from .dataset.dataset import DDPDatasetWithRank
-from .utils import get_os_client, do_bulk
+from .utils import do_bulk, get_os_client
 
 logger = logging.getLogger(__name__)
 
+
 async def ingest_dense(
-    dataset: Dataset, 
+    dataset: Dataset,
     model_id: str,
     index_name: str,
     accelerator: Accelerator,
@@ -22,7 +23,7 @@ async def ingest_dense(
     max_length: int = 512,
 ):
     os_client = get_os_client()
-    
+
     # Check dataset type
     if isinstance(dataset, DDPDatasetWithRank):
         logger.error("Input dataset can not be DDPDatasetWithRank.")
@@ -32,17 +33,25 @@ async def ingest_dense(
     ddp_dataset = DDPDatasetWithRank(
         dataset, accelerator.local_process_index, accelerator.num_processes
     )
-    dataloader = DataLoader(ddp_dataset, batch_size=batch_size, shuffle=False, num_workers=4, collate_fn=lambda x: list(zip(*x)))
-    
+    dataloader = DataLoader(
+        ddp_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=4,
+        collate_fn=lambda x: list(zip(*x)),
+    )
+
     logger.info(
         f"Local rank: {accelerator.local_process_index}, index_name: {index_name}, sample number: {len(ddp_dataset)}"
     )
 
     # Load model on correct device
-    logger.info(f"Loading SentenceTransformer model: {model_id} on {accelerator.device}")
+    logger.info(
+        f"Loading SentenceTransformer model: {model_id} on {accelerator.device}"
+    )
     model = SentenceTransformer(model_id, device=accelerator.device)
     model.max_seq_length = max_length
-    
+
     # Get dimension
     embedding_dim = model.get_sentence_embedding_dimension()
     if accelerator.is_local_main_process:
@@ -61,8 +70,8 @@ async def ingest_dense(
                         "index": {
                             "knn": True,
                             "knn.algo_param.ef_search": 100,
-                            "number_of_shards": 12, # Increased shard count for better distribution if needed, matching ingest.py default often
-                            "number_of_replicas": 0
+                            "number_of_shards": 12,  # Increased shard count for better distribution if needed, matching ingest.py default often
+                            "number_of_replicas": 0,
                         }
                     },
                     "mappings": {
@@ -73,58 +82,63 @@ async def ingest_dense(
                                 "method": {
                                     "name": "hnsw",
                                     "engine": "faiss",
-                                    "space_type": "cosinesimil"
-                                }
+                                    "space_type": "cosinesimil",
+                                },
                             },
                             "text": {"type": "text"},
                             "id": {"type": "keyword"},
                         }
-                    }
+                    },
                 }
                 os_client.indices.create(index=index_name, body=body)
         except Exception as e:
             logger.warning(f"Index creation failed (might exist): {e}")
-    
+
     accelerator.wait_for_everyone()
-    
+
     # Ingest
     logger.info("Starting ingestion...")
 
     tasks = []
     timeout = ClientTimeout(total=600)
-    
+
     async with aiohttp.ClientSession(timeout=timeout) as session:
         for batch in tqdm(dataloader, disable=not accelerator.is_local_main_process):
             ids = batch[0]
             texts = batch[1]
-            
+
             # Encode
-            embeddings = model.encode(texts, batch_size=batch_size, show_progress_bar=False, convert_to_numpy=True)
-            
+            embeddings = model.encode(
+                texts,
+                batch_size=batch_size,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+            )
+
             bulk_body = []
             for i in range(len(ids)):
                 bulk_body.append({"index": {"_index": index_name, "_id": ids[i]}})
-                bulk_body.append({
-                    "text": texts[i],
-                    "embedding": embeddings[i].tolist(),
-                    "id": ids[i]
-                })
-            
+                bulk_body.append(
+                    {
+                        "text": texts[i],
+                        "embedding": embeddings[i].tolist(),
+                        "id": ids[i],
+                    }
+                )
+
             # Async bulk
             tasks.append(asyncio.create_task(do_bulk(bulk_body, session)))
-            
+
             # Rate limit / concurrent limit
             if len(tasks) >= 20:
                 await asyncio.gather(*tasks)
                 tasks = []
-        
+
         if tasks:
             await asyncio.gather(*tasks)
 
     accelerator.wait_for_everyone()
-    
+
     if accelerator.is_local_main_process:
         logger.info("Ingestion complete. Refreshing index...")
         os_client.indices.refresh(index=index_name)
-
-

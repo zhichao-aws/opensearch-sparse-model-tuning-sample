@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 from enum import Enum
-from typing import List, Iterable
 
 from datasets import load_dataset
 from tokenizers import (
@@ -31,19 +30,19 @@ def train_bpe_tokenizer(
 ):
     # Configuration (could be exposed as args if needed)
     processing = PROCESSING.BERT_METASPACE
-    
+
     # Load dataset
     print(f"Loading data from {input_file}...")
     dataset = load_dataset(
         "json",
         data_files=[input_file],
         split="train",
-        num_proc=4, # Reduced from 40 to be safer
+        num_proc=4,  # Reduced from 40 to be safer
     )
 
     def batch_iterator(batch_size=2000):
         # If dataset is small enough, load into memory
-        if len(dataset) < 1e8: 
+        if len(dataset) < 1e8:
             texts = dataset["text"]
             for i in range(0, len(texts), batch_size):
                 yield texts[i : i + batch_size]
@@ -93,7 +92,9 @@ def train_bpe_tokenizer(
         )
 
     # Trainer
-    print(f"Training BPE tokenizer with vocab_size={vocab_size}, min_freq={min_frequency}...")
+    print(
+        f"Training BPE tokenizer with vocab_size={vocab_size}, min_freq={min_frequency}..."
+    )
     trainer = trainers.BpeTrainer(
         vocab_size=vocab_size,
         min_frequency=min_frequency,
@@ -108,12 +109,12 @@ def train_bpe_tokenizer(
     # Post-training setup (ModernBERT alignment)
     print("Aligning with ModernBERT tokens...")
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # We save ModernBERT config locally to read added_tokens
     mdbert_temp_path = os.path.join(output_dir, "modernbert_temp")
     mdbert_tokenizer.save_pretrained(mdbert_temp_path)
     mdbert_tokenizer_json_path = os.path.join(mdbert_temp_path, "tokenizer.json")
-    
+
     with open(mdbert_tokenizer_json_path, "r", encoding="utf-8") as f:
         mdbert_tokenizer_json = json.load(f)
 
@@ -122,7 +123,7 @@ def train_bpe_tokenizer(
     builtin_specials = set(list(mdbert_tokenizer.special_tokens_map.values()))
     special_added_tokens = []
     regular_added_tokens = []
-    
+
     for entry in added_tokens_entries:
         content = entry.get("content", "")
         if not content:
@@ -192,7 +193,7 @@ def train_bpe_tokenizer(
     )
 
     hf_tokenizer.backend_tokenizer.post_processor = template
-    
+
     print(f"Saving tokenizer to {output_dir}...")
     hf_tokenizer.save_pretrained(output_dir)
     tokenizer.save(os.path.join(output_dir, "original_config.json"))
@@ -207,17 +208,36 @@ def train_bpe_tokenizer(
         tokenizer_config["clean_up_tokenization_spaces"] = True
         with open(config_path, "w") as f:
             json.dump(tokenizer_config, f, indent=4)
-    
+
     print("Done.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a BPE tokenizer (BERT-like with ModernBERT alignment).")
-    parser.add_argument("--input_file", type=str, required=True, help="Path to input JSONL file (must contain 'text' field).")
-    parser.add_argument("--vocab_size", type=int, default=20000, help="Vocabulary size.")
-    parser.add_argument("--min_frequency", type=int, default=10, help="Minimum frequency for a token to be included.")
-    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the trained tokenizer.")
-    
+    parser = argparse.ArgumentParser(
+        description="Train a BPE tokenizer (BERT-like with ModernBERT alignment)."
+    )
+    parser.add_argument(
+        "--input_file",
+        type=str,
+        required=True,
+        help="Path to input JSONL file (must contain 'text' field).",
+    )
+    parser.add_argument(
+        "--vocab_size", type=int, default=20000, help="Vocabulary size."
+    )
+    parser.add_argument(
+        "--min_frequency",
+        type=int,
+        default=10,
+        help="Minimum frequency for a token to be included.",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+        help="Directory to save the trained tokenizer.",
+    )
+
     args = parser.parse_args()
 
     train_bpe_tokenizer(

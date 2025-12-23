@@ -2,7 +2,14 @@ import argparse
 import json
 from typing import Iterable, List, Optional
 
-from tokenizers import Tokenizer, models, normalizers, pre_tokenizers, decoders, processors
+from tokenizers import (
+    Tokenizer,
+    decoders,
+    models,
+    normalizers,
+    pre_tokenizers,
+    processors,
+)
 from tokenizers.trainers import WordPieceTrainer
 
 
@@ -85,27 +92,58 @@ def load_jsonl_texts(file_path: str) -> List[str]:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train a BERT-like WordPiece tokenizer.")
-    parser.add_argument("--input_file", type=str, required=True, help="Path to input JSONL file (must contain 'text' field).")
-    parser.add_argument("--vocab_size", type=int, default=20000, help="Vocabulary size.")
-    parser.add_argument("--min_frequency", type=int, default=5, help="Minimum frequency for a token to be included.")
-    parser.add_argument("--save_path", type=str, required=True, help="Path to save the trained tokenizer JSON.")
-    parser.add_argument("--lowercase", action="store_true", default=True, help="Whether to lowercase inputs.")
-    parser.add_argument("--no_lowercase", action="store_false", dest="lowercase", help="Do not lowercase inputs.")
-    
+    parser = argparse.ArgumentParser(
+        description="Train a BERT-like WordPiece tokenizer."
+    )
+    parser.add_argument(
+        "--input_file",
+        type=str,
+        required=True,
+        help="Path to input JSONL file (must contain 'text' field).",
+    )
+    parser.add_argument(
+        "--vocab_size", type=int, default=20000, help="Vocabulary size."
+    )
+    parser.add_argument(
+        "--min_frequency",
+        type=int,
+        default=5,
+        help="Minimum frequency for a token to be included.",
+    )
+    parser.add_argument(
+        "--save_path",
+        type=str,
+        required=True,
+        help="Path to save the trained tokenizer JSON.",
+    )
+    parser.add_argument(
+        "--lowercase",
+        action="store_true",
+        default=True,
+        help="Whether to lowercase inputs.",
+    )
+    parser.add_argument(
+        "--no_lowercase",
+        action="store_false",
+        dest="lowercase",
+        help="Do not lowercase inputs.",
+    )
+
     args = parser.parse_args()
 
     print(f"Loading texts from {args.input_file}...")
     texts = load_jsonl_texts(args.input_file)
     print(f"Loaded {len(texts)} texts.")
-    
-    print(f"Training tokenizer with vocab_size={args.vocab_size}, min_freq={args.min_frequency}...")
+
+    print(
+        f"Training tokenizer with vocab_size={args.vocab_size}, min_freq={args.min_frequency}..."
+    )
     tok = train_bert_like_wordpiece(
         texts,
         vocab_size=args.vocab_size,
         min_frequency=args.min_frequency,
         lowercase=args.lowercase,
-        strip_accents=args.lowercase, # usually consistent with lowercase for BERT
+        strip_accents=args.lowercase,  # usually consistent with lowercase for BERT
     )
 
     print(f"Saving tokenizer to {args.save_path}...")

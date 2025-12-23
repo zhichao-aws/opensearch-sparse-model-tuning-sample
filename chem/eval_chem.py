@@ -1,13 +1,27 @@
 import argparse
 import os
+
 import mteb
 from sentence_transformers import SparseEncoder
 
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base_model", type=str, default=None, help="Base model name (optional)")
-    parser.add_argument("--output_dir", type=str, required=True, help="Path to the training output directory")
-    parser.add_argument("--max_active_dims", type=int, default=None, help="Keep top-K active dims in SPLADE output")
+    parser.add_argument(
+        "--base_model", type=str, default=None, help="Base model name (optional)"
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+        help="Path to the training output directory",
+    )
+    parser.add_argument(
+        "--max_active_dims",
+        type=int,
+        default=None,
+        help="Keep top-K active dims in SPLADE output",
+    )
 
     args = parser.parse_args()
 
@@ -15,7 +29,7 @@ def main():
     # 假设 training script 保存到了 output_dir/final
     model_path = os.path.join(args.output_dir, "final")
     print(f"Loading model from: {model_path}")
-    
+
     model = SparseEncoder(model_path)
     tasks = mteb.get_tasks(tasks=["ChemHotpotQARetrieval", "ChemNQRetrieval"])
     evaluation = mteb.MTEB(tasks=tasks)
@@ -38,6 +52,7 @@ def main():
             "max_active_dims": args.max_active_dims,
         },
     )
+
 
 if __name__ == "__main__":
     main()

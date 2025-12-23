@@ -1,6 +1,6 @@
+import argparse
 import os
 import random
-import argparse
 from dataclasses import dataclass
 
 import torch
@@ -8,7 +8,11 @@ from datasets import load_dataset
 
 # -------- Sentence-Transformers sparse training imports (v5) ----------
 from sentence_transformers import SparseEncoder
-from sentence_transformers.sparse_encoder import SparseEncoderTrainer, SparseEncoderTrainingArguments, losses
+from sentence_transformers.sparse_encoder import (
+    SparseEncoderTrainer,
+    SparseEncoderTrainingArguments,
+    losses,
+)
 
 # BatchSamplers 的 import 在不同版本位置可能略有差异，做个兼容
 try:
@@ -35,7 +39,7 @@ class Config:
     # 训练数据量（先跑通建议用小一点；正式实验可以拉大）
     max_train_samples: int = 200_000
     max_eval_samples: int = 5_000
-    
+
     num_train_epochs: int = 1
     train_batch_size: int = 16
     eval_batch_size: int = 16
@@ -66,8 +70,25 @@ def guess_pair_columns(column_names):
     尽量自动猜训练集里“query 列”和“doc/passage 列”叫什么。
     猜不到就让你手动指定（改下面 query_col / doc_col）。
     """
-    query_cands = ["query", "question", "generated_query", "instruction", "title_query", "q"]
-    doc_cands = ["paragraph", "passage", "document", "context", "text", "answer", "abstract", "content", "d"]
+    query_cands = [
+        "query",
+        "question",
+        "generated_query",
+        "instruction",
+        "title_query",
+        "q",
+    ]
+    doc_cands = [
+        "paragraph",
+        "passage",
+        "document",
+        "context",
+        "text",
+        "answer",
+        "abstract",
+        "content",
+        "d",
+    ]
 
     q = next((c for c in query_cands if c in column_names), None)
     d = next((c for c in doc_cands if c in column_names), None)
@@ -76,10 +97,24 @@ def guess_pair_columns(column_names):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base_model", type=str, default=None, help="Base model to initialize from")
-    parser.add_argument("--output_dir", type=str, default=None, help="Output directory for model checkpoints")
-    parser.add_argument("--train_dataset", type=str, default="BASF-AI/dolma-chem-only-query-generated", help="Train dataset")
-    parser.add_argument("--max_train_samples", type=int, default=200_000, help="Max train samples")
+    parser.add_argument(
+        "--base_model", type=str, default=None, help="Base model to initialize from"
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Output directory for model checkpoints",
+    )
+    parser.add_argument(
+        "--train_dataset",
+        type=str,
+        default="BASF-AI/dolma-chem-only-query-generated",
+        help="Train dataset",
+    )
+    parser.add_argument(
+        "--max_train_samples", type=int, default=200_000, help="Max train samples"
+    )
     args = parser.parse_args()
 
     cfg = Config()
@@ -113,9 +148,13 @@ def main():
 
     # 3) Subsample + split train/eval
     if cfg.max_train_samples is not None and cfg.max_train_samples < len(ds):
-        ds = ds.shuffle(seed=cfg.seed).select(range(cfg.max_train_samples + cfg.max_eval_samples))
+        ds = ds.shuffle(seed=cfg.seed).select(
+            range(cfg.max_train_samples + cfg.max_eval_samples)
+        )
 
-    split = ds.train_test_split(test_size=min(cfg.max_eval_samples, len(ds)//20), seed=cfg.seed)
+    split = ds.train_test_split(
+        test_size=min(cfg.max_eval_samples, len(ds) // 20), seed=cfg.seed
+    )
     train_ds = split["train"]
     eval_ds = split["test"]
 
@@ -161,7 +200,11 @@ def main():
         logging_steps=200,
         run_name=os.path.basename(cfg.output_dir.rstrip("/")),
         # MultipleNegativesRankingLoss 系列通常建议 batch 内不重复
-        **({"batch_sampler": BatchSamplers.NO_DUPLICATES} if BatchSamplers is not None else {}),
+        **(
+            {"batch_sampler": BatchSamplers.NO_DUPLICATES}
+            if BatchSamplers is not None
+            else {}
+        ),
     )
 
     # 8) Train

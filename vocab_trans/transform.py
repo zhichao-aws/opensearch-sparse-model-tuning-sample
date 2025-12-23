@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 
 import entmax
 import torch
+import utils
 from fastdist import fastdist
 from tokenizers import Tokenizer as RawTokenizer
 from transformers import (
@@ -14,8 +15,6 @@ from transformers import (
     PreTrainedTokenizer,
     PreTrainedTokenizerFast,
 )
-
-import utils
 
 # Ensure deepfocus is available or imported correctly
 try:
@@ -88,6 +87,14 @@ def parse_args():
         help="Rescale final embeddings and bias to match target model's average norm (overlap tokens)",
     )
     parser.add_argument(
+        "--target_norm_value",
+        type=float,
+        default=None,
+        help="Optional. If provided, overrides the target norm used by --use_target_norm. "
+        "When set, embeddings (and bias if present) will be rescaled so that the average norm "
+        "of overlap-token embeddings equals this value, without needing to compute it from target_model.",
+    )
+    parser.add_argument(
         "--sim_metric",
         type=str,
         default="cosine",
@@ -105,6 +112,12 @@ def parse_args():
         action="store_true",
         default=False,
         help="Use mean pooling of overlapped tokens for new embeddings",
+    )
+    parser.add_argument(
+        "--use_sub",
+        action="store_true",
+        default=False,
+        help="For non-overlapping tokens, encode token text with source tokenizer and set embedding to the mean of its subtokens' embeddings.",
     )
     parser.add_argument(
         "--all_random",
@@ -203,6 +216,7 @@ def create_new_embeddings(
     sim_metric: str,
     use_matmul: bool,
     use_mean: bool,
+    use_sub: bool,
     all_random: bool,
     new_random: bool,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor], List[int]]:
@@ -334,6 +348,88 @@ def create_new_embeddings(
         # unless we want to adapt it. For now, following transform_mean.py which just uses mean.
         if rescale_norm:
             logger.warning("rescale_norm is ignored when use_mean is True.")
+    elif use_sub:
+        logger.info(
+            "Using source-tokenizer subtoken averaging for new embeddings (use_sub=True)..."
+        )
+        if rescale_norm:
+            logger.warning("rescale_norm is ignored when use_sub is True.")
+
+        # Detect whether target tokenizer is WordPiece (BERT-style). We only need a best-effort
+        # heuristic to decide whether to prefix a leading space for non-"##" tokens.
+        is_target_wordpiece = False
+        try:
+            backend_tok = getattr(target_tokenizer, "backend_tokenizer", None)
+            backend_model = getattr(backend_tok, "model", None)
+            model_name = getattr(backend_model, "__class__", type("x", (), {})).__name__
+            is_target_wordpiece = model_name.lower() == "wordpiece"
+        except Exception:
+            is_target_wordpiece = False
+
+        # Heuristic normalization: target vocab tokens are often "token strings" not raw text.
+        # We map common tokenizer markers into something source_tokenizer.encode() can handle.
+        def _token_to_text(tok: str) -> str:
+            # WordPiece continuation marker
+            if tok.startswith("##") and len(tok) > 2:
+                return tok[2:]
+            # WordPiece "beginning-of-word": prefix a space so source tokenizer is more likely
+            # to treat it as a word start. Skip special tokens like [CLS]/[SEP].
+            if is_target_wordpiece and tok and (not tok.startswith("##")):
+                if tok.startswith("[") and tok.endswith("]"):
+                    return tok
+                return " " + tok
+            # RoBERTa/GPT2 BPE "beginning-of-word with space" marker
+            if tok.startswith("Ġ") and len(tok) > 1:
+                return " " + tok[1:]
+            # SentencePiece "beginning-of-word with space" marker
+            if tok.startswith("▁") and len(tok) > 1:
+                return " " + tok[1:]
+            return tok
+
+        flat_sub_ids: List[int] = []
+        flat_row_ids: List[int] = []
+        counts = torch.zeros(
+            len(new_ids), device=orig_weight.device, dtype=torch.float32
+        )
+
+        unk_id = getattr(source_tokenizer, "unk_token_id", None)
+
+        for row_idx, tgt_id in enumerate(new_ids):
+            tok = target_tokenizer.convert_ids_to_tokens(int(tgt_id))
+            text = _token_to_text(tok)
+            sub_ids = source_tokenizer.encode(text, add_special_tokens=False)
+            # print(tok, source_tokenizer.convert_ids_to_tokens(sub_ids))
+
+            if not sub_ids:
+                if unk_id is not None:
+                    sub_ids = [int(unk_id)]
+                else:
+                    # As a last resort, just use the first embedding row.
+                    sub_ids = [0]
+
+            # If encode collapsed to UNK only, keep it (still a deterministic fallback)
+            for sid in sub_ids:
+                flat_sub_ids.append(int(sid))
+                flat_row_ids.append(row_idx)
+            counts[row_idx] = float(len(sub_ids))
+
+        sub_ids_t = torch.tensor(
+            flat_sub_ids, device=orig_weight.device, dtype=torch.long
+        )
+        row_ids_t = torch.tensor(
+            flat_row_ids, device=orig_weight.device, dtype=torch.long
+        )
+        sub_embs = orig_weight[sub_ids_t]  # (N_flat, dim)
+
+        sums = torch.zeros(
+            (len(new_ids), dim),
+            device=orig_weight.device,
+            dtype=orig_weight.dtype,
+        )
+        sums.index_add_(0, row_ids_t, sub_embs)
+
+        # Avoid division by zero (counts should be >0 due to fallbacks)
+        new_rows = sums / (counts.unsqueeze(1).to(sums.dtype) + 1e-8)
     else:
         if target_model is None:
             raise ValueError(
@@ -347,10 +443,6 @@ def create_new_embeddings(
                 f"Tokenizer vocab size ({V_target}) != target embedding rows ({target_weight.shape[0]}). Using target embedding rows."
             )
             V_target = target_weight.shape[0]
-        if target_weight.shape[1] != dim:
-            raise ValueError(
-                f"target_model hidden dim ({target_weight.shape[1]}) != source_model hidden dim ({dim}); cannot interpolate."
-            )
 
         target_overlap = target_weight[overlap_ids_target]  # (|O|, dim) in target space
         target_new = target_weight[new_ids]  # (N_new, dim)
@@ -431,24 +523,35 @@ def apply_and_save(
     additional_token_ids: List[int],
     save_path: str,
     use_target_norm: bool,
+    target_norm_value: Optional[float],
     save_additional_tokens: bool,
 ):
     logger.info("Applying new embeddings to model...")
 
-    if use_target_norm:
-        if target_model is None:
-            raise ValueError(
-                "use_target_norm=True 需要加载 target_model，但当前未加载。请移除 --use_target_norm 或确保会加载 target_model。"
-            )
+    if use_target_norm or (target_norm_value is not None):
         logger.info(
-            "Rescaling final embeddings and bias to match target model's average norm (on overlap tokens)..."
+            "Rescaling final embeddings and bias to match target norm (on overlap tokens)..."
         )
 
-        # 1. Calculate average norm of overlap tokens in TARGET model
-        target_emb = target_model.get_input_embeddings()
-        target_weight = target_emb.weight.data
-        target_overlap_norms = target_weight[overlap_ids_target].norm(dim=1)
-        avg_target_norm = target_overlap_norms.mean()
+        # 1. Decide the target norm to match
+        if target_norm_value is not None:
+            avg_target_norm = torch.tensor(
+                float(target_norm_value),
+                device=new_weight.device,
+                dtype=new_weight.dtype,
+            )
+            logger.info(f"Using provided target_norm_value={float(target_norm_value)}")
+        else:
+            if target_model is None:
+                raise ValueError(
+                    "use_target_norm=True 需要加载 target_model 来计算 target norm，但当前未加载。"
+                    "请提供 --target_norm_value，或确保会加载 target_model。"
+                )
+            # Calculate average norm of overlap tokens in TARGET model
+            target_emb = target_model.get_input_embeddings()
+            target_weight = target_emb.weight.data
+            target_overlap_norms = target_weight[overlap_ids_target].norm(dim=1)
+            avg_target_norm = target_overlap_norms.mean()
 
         # 2. Calculate average norm of overlap tokens in NEW embeddings (which are from Source)
         # new_weight already has overlap tokens set to source values
@@ -463,13 +566,8 @@ def apply_and_save(
         new_weight = new_weight * scale_factor_emb
 
         if new_bias is not None:
-            target_output = target_model.get_output_embeddings()
-            if hasattr(target_output, "bias") and target_output.bias is not None:
-                new_bias = new_bias * scale_factor_emb
-            else:
-                logger.warning(
-                    "Target model output embeddings do not have bias. Bias calculation requires target bias."
-                )
+            # Bias should be scaled consistently with embeddings.
+            new_bias = new_bias * scale_factor_emb
 
     # Create new embedding layer
     new_emb_layer = torch.nn.Embedding.from_pretrained(new_weight, freeze=False)
@@ -546,6 +644,13 @@ def apply_and_save(
 def main():
     args = parse_args()
 
+    # Validate mutually exclusive modes for generating NEW (non-overlap) embeddings
+    new_modes = [args.use_mean, args.use_sub, args.all_random, args.new_random]
+    if sum(bool(x) for x in new_modes) > 1:
+        raise ValueError(
+            "参数冲突：--use_mean/--use_sub/--all_random/--new_random 只能同时启用一个。"
+        )
+
     # Load Tokenizers
     source_tokenizer, target_tokenizer = load_tokenizers(
         args.source_model,
@@ -562,9 +667,14 @@ def main():
     # Load Models
     # target_model 只有在需要 target embedding/bias/norm 时才需要加载
     needs_target_model = (
-        args.use_target_norm
+        (args.use_target_norm and args.target_norm_value is None)
         or args.set_bias
-        or (not args.use_mean and not args.all_random and not args.new_random)
+        or (
+            (not args.use_mean)
+            and (not args.use_sub)
+            and (not args.all_random)
+            and (not args.new_random)
+        )
     )
 
     logger.info(f"Loading source model: {args.source_model}")
@@ -594,6 +704,7 @@ def main():
         args.sim_metric,
         args.use_matmul,
         args.use_mean,
+        args.use_sub,
         args.all_random,
         args.new_random,
     )
@@ -614,6 +725,7 @@ def main():
         additional_token_ids,
         args.save_path,
         args.use_target_norm,
+        args.target_norm_value,
         args.save_additional_tokens,
     )
 
@@ -622,9 +734,10 @@ if __name__ == "__main__":
     main()
 
 # python transform.py --save_path bert-vocab
-# python transform.py --save_path bert-vocab-sb --set_bias
+# python transform.py --save_path bert-vocab-sb-tn --set_bias --use_target_norm
 # python transform.py --save_path bert-vocab-tn --use_target_norm
 # python transform.py --save_path bert-vocab-sb-tn-mean --set_bias --use_target_norm --use_mean
+# python transform.py --save_path bert-vocab-sb-tn-sub --set_bias --use_target_norm --use_sub
 # python transform.py --save_path bert-vocab-all-random --all_random --use_target_norm --set_bias
 # python transform.py --save_path bert-vocab-new-random --new_random --use_target_norm --set_bias
-# python transform.py --source_model roberta-large --save_path roberta-bert-vocab-sb-tn --set_bias --use_target_norm
+# python transform.py --source_model roberta-large --save_path roberta-large-sb-tn --set_bias --use_target_norm --save_additional_tokens

@@ -17,8 +17,14 @@ def set_seed(seed: int = 42) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
-def sparse_activation(logits: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-    """模仿 scripts/model/sparse_encoders.py 的 encode：maxpool + log1p(relu)."""
+def sparse_activation(
+    logits: torch.Tensor, attention_mask: torch.Tensor
+) -> torch.Tensor:
+    """对 (B, L, V) 的 logits 做 padding mask 后，沿 token 维 max-pool 得到 (B, V)。
+
+    注意：这里返回的是 **原始 max logits**（可能为负），不包含 relu / log1p。
+    后续统计时默认会过滤掉 <=0 的值（除非传 --include_zeros）。
+    """
     # logits: (B, L, V), attention_mask: (B, L)
     masked_logits = logits.masked_fill((attention_mask == 0).unsqueeze(-1), -torch.inf)
     values, _ = torch.max(masked_logits, dim=1)  # (B, V)
@@ -60,7 +66,12 @@ def main() -> None:
         help="tokenizer 路径或 HF ID",
     )
     parser.add_argument("--dataset", type=str, default="msmarco", help="BeIR 数据集名")
-    parser.add_argument("--data_file", type=str, default=None, help="本地 jsonl 文件路径，若指定则优先使用此文件")
+    parser.add_argument(
+        "--data_file",
+        type=str,
+        default=None,
+        help="本地 jsonl 文件路径，若指定则优先使用此文件",
+    )
     parser.add_argument("--num_docs", type=int, default=20000)
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=64)
@@ -88,15 +99,23 @@ def main() -> None:
     parser.add_argument(
         "--include_zeros",
         action="store_true",
-        help="是否把 0 激活也纳入 sparse activation 分布（默认只统计 >0）。",
+        help=(
+            "是否把 <=0（包含 0 和负值）的 sparse max-logit 也纳入 sparse_activation 分布。"
+            "默认只统计 >0 的值（相当于在“条件分布：activation>0”上算 percentile）。"
+        ),
     )
     parser.add_argument(
         "--cut_percent",
         type=float,
         default=None,
-        help="If set (e.g. 50), subtract the P(cut_percent) activation value from the model bias.",
+        help=(
+            "如果设置（例如 60），会在打印完 percentiles 后，把当前采样分布的 "
+            "P(cut_percent) 值从输出 embedding 的 bias 里整体减去，并可选保存模型。"
+        ),
     )
-    parser.add_argument("--save_path", type=str, default=None, help="Path to save the modified model.")
+    parser.add_argument(
+        "--save_path", type=str, default=None, help="Path to save the modified model."
+    )
 
     args = parser.parse_args()
 
@@ -188,12 +207,18 @@ def main() -> None:
 
             # 2) input token 对应 logit（逐位置，排除 padding）
             # logits.gather(2, input_ids.unsqueeze(-1)) -> (B, L, 1)
-            token_logits = logits.gather(2, batch["input_ids"].unsqueeze(-1)).squeeze(-1)
+            token_logits = logits.gather(2, batch["input_ids"].unsqueeze(-1)).squeeze(
+                -1
+            )
             token_logits = token_logits[attention_mask == 1]
-            tok_sample = _maybe_sample_1d(token_logits.reshape(-1), args.sample_per_batch)
+            tok_sample = _maybe_sample_1d(
+                token_logits.reshape(-1), args.sample_per_batch
+            )
             _append_samples("input_token_logit", tok_sample)
 
-    print("\nPercentiles:")
+    print(
+        "\nPercentiles: (注意：这里打印的是应用 cut 之前的统计；且默认 sparse_activation 仅统计 >0 的值)"
+    )
     for key, chunks in samples.items():
         if not chunks:
             print(f"- {key}: (no samples)")
@@ -216,10 +241,15 @@ def main() -> None:
         if key in samples and samples[key]:
             arr = np.concatenate(samples[key], axis=0)
             cutoff_value = float(np.percentile(arr, args.cut_percent))
-            print(f"\nApplying cut: subtracting P{args.cut_percent} ({cutoff_value:.6f}) from output embeddings bias...")
+            print(
+                f"\nApplying cut: subtracting P{args.cut_percent} ({cutoff_value:.6f}) from output embeddings bias..."
+            )
 
             output_embeddings = model.get_output_embeddings()
-            if hasattr(output_embeddings, "bias") and output_embeddings.bias is not None:
+            if (
+                hasattr(output_embeddings, "bias")
+                and output_embeddings.bias is not None
+            ):
                 # 减去 cutoff
                 with torch.no_grad():
                     output_embeddings.bias.data -= cutoff_value
@@ -230,7 +260,9 @@ def main() -> None:
                     model.save_pretrained(args.save_path)
                     tokenizer.save_pretrained(args.save_path)
             else:
-                print("Warning: Could not find bias in output embeddings (model.get_output_embeddings().bias).")
+                print(
+                    "Warning: Could not find bias in output embeddings (model.get_output_embeddings().bias)."
+                )
         else:
             print(f"\nWarning: Cannot apply cut because no samples found for {key}.")
 

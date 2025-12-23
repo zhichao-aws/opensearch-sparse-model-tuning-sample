@@ -21,7 +21,9 @@ def set_seed(seed: int = 42) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="只计算 MLM loss / perplexity（BeIR corpus）。")
+    parser = argparse.ArgumentParser(
+        description="只计算 MLM loss / perplexity（BeIR corpus）。"
+    )
     parser.add_argument("--model_id", type=str, required=True, help="模型路径或 HF ID")
     parser.add_argument(
         "--tokenizer_id",
@@ -30,7 +32,12 @@ def main() -> None:
         help="tokenizer 路径或 HF ID",
     )
     parser.add_argument("--dataset", type=str, default="msmarco", help="BeIR 数据集名")
-    parser.add_argument("--data_file", type=str, default=None, help="本地 jsonl 文件路径，若指定则优先使用此文件")
+    parser.add_argument(
+        "--data_file",
+        type=str,
+        default=None,
+        help="本地 jsonl 文件路径，若指定则优先使用此文件",
+    )
     parser.add_argument("--num_docs", type=int, default=2000, help="取前多少篇文档")
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=16)

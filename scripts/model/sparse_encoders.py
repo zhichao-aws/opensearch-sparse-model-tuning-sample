@@ -109,7 +109,9 @@ class SparseModel(torch.nn.Module):
 
     def _encode(self, **kwargs):
         output = self.backbone(**kwargs)[0]
-        output.masked_fill_((kwargs.get("attention_mask") == 0).unsqueeze(-1), -torch.inf)
+        output.masked_fill_(
+            (kwargs.get("attention_mask") == 0).unsqueeze(-1), -torch.inf
+        )
         values, _ = torch.max(output, dim=1)
         values = torch.log1p(torch.relu(values))
         if self.use_l0:

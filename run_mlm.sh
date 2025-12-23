@@ -6,12 +6,18 @@ DEVICE_BS=64
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 YAML_CONFIG="c.yaml"
 
-BASE_MODEL="bert-vocab-tn"
+BASE_MODEL="bert-vocab-sb-tn"
 BASE_NAME=$BASE_MODEL
-SUFFIX="VT-b5"
-DO_TRAIN_STEP_0=true
+SUFFIX="VT-P60"
+DO_TRAIN_STEP_0=false
 
 if [ "$DO_TRAIN_STEP_0" = true ]; then
+    python probe_activation_percentiles.py \
+        --model_id $BASE_MODEL \
+        --cut_percent 60 \
+        --save_path $BASE_MODEL \
+        --include_zeros
+
     sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${BASE_MODEL}|" "$YAML_CONFIG"
     sed -i -E "s|^tokenizer_name:.*|tokenizer_name: ${BASE_MODEL}|" "$YAML_CONFIG"
     sed -i -E "s|^output_dir:.*|output_dir: output/paper/bi/$BASE_NAME-$SUFFIX-0/final|" "$YAML_CONFIG"
@@ -45,11 +51,17 @@ do
         --weight_decay 0.01 \
         --overwrite_output_dir \
         --fp16 \
-        --additional_tokens "additional_tokens_v2.json" \
+        --additional_tokens $BASE_MODEL/additional_tokens.json \
         --log_level info
 
     CKPT_PATH="pretrain/$BASE_NAME-$SUFFIX-$STEP/checkpoint-$STEP"
     OUT_DIR="output/paper/bi/$BASE_NAME-$SUFFIX-$STEP/final"
+
+    python probe_activation_percentiles.py \
+        --model_id $CKPT_PATH \
+        --cut_percent 60 \
+        --save_path $CKPT_PATH \
+        --include_zeros
 
     git restore $YAML_CONFIG
     sed -i -E "s|^model_name_or_path:.*|model_name_or_path: ${CKPT_PATH}|" "$YAML_CONFIG"

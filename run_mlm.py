@@ -313,12 +313,13 @@ class DataTrainingArguments:
                     )
 
 
-
 @dataclass
 class DataCollatorWithAdditionalTokens(DataCollatorForLanguageModeling):
     additional_tokens: Optional[List[int]] = None
 
-    def torch_mask_tokens(self, inputs: Any, special_tokens_mask: Optional[Any] = None) -> Tuple[Any, Any]:
+    def torch_mask_tokens(
+        self, inputs: Any, special_tokens_mask: Optional[Any] = None
+    ) -> Tuple[Any, Any]:
         """
         Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
         """
@@ -335,9 +336,14 @@ class DataCollatorWithAdditionalTokens(DataCollatorForLanguageModeling):
 
         if special_tokens_mask is None:
             special_tokens_mask = [
-                self.tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
+                self.tokenizer.get_special_tokens_mask(
+                    val, already_has_special_tokens=True
+                )
+                for val in labels.tolist()
             ]
-            special_tokens_mask = torch.tensor(special_tokens_mask, dtype=torch.bool, device=labels.device)
+            special_tokens_mask = torch.tensor(
+                special_tokens_mask, dtype=torch.bool, device=labels.device
+            )
         else:
             special_tokens_mask = special_tokens_mask.bool()
 
@@ -354,15 +360,22 @@ class DataCollatorWithAdditionalTokens(DataCollatorForLanguageModeling):
         probability_matrix = weights * scaling
         probability_matrix.clamp_(min=0.0, max=1.0)
 
-        masked_indices = torch.bernoulli(probability_matrix, generator=self.generator).bool()
+        masked_indices = torch.bernoulli(
+            probability_matrix, generator=self.generator
+        ).bool()
         labels[~masked_indices] = -100  # We only compute loss on masked tokens
 
         # mask_replace_prob% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
         indices_replaced = (
-            torch.bernoulli(torch.full(labels.shape, self.mask_replace_prob), generator=self.generator).bool()
+            torch.bernoulli(
+                torch.full(labels.shape, self.mask_replace_prob),
+                generator=self.generator,
+            ).bool()
             & masked_indices
         )
-        inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
+        inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(
+            self.tokenizer.mask_token
+        )
 
         if self.mask_replace_prob == 1 or self.random_replace_prob == 0:
             return inputs, labels
@@ -375,11 +388,19 @@ class DataCollatorWithAdditionalTokens(DataCollatorForLanguageModeling):
 
         # random_replace_prob% of the time, we replace masked input tokens with random word
         indices_random = (
-            torch.bernoulli(torch.full(labels.shape, random_replace_prob_scaled), generator=self.generator).bool()
+            torch.bernoulli(
+                torch.full(labels.shape, random_replace_prob_scaled),
+                generator=self.generator,
+            ).bool()
             & masked_indices
             & ~indices_replaced
         )
-        random_words = torch.randint(len(self.tokenizer), labels.shape, dtype=torch.long, generator=self.generator)
+        random_words = torch.randint(
+            len(self.tokenizer),
+            labels.shape,
+            dtype=torch.long,
+            generator=self.generator,
+        )
         inputs[indices_random] = random_words[indices_random]
 
         # The rest of the time ((1-random_replace_prob-mask_replace_prob)% of the time) we keep the masked input tokens unchanged
@@ -389,20 +410,32 @@ class DataCollatorWithAdditionalTokens(DataCollatorForLanguageModeling):
 class L1RegularizedTrainer(Trainer):
     def __init__(self, logits_l1_weight: float = 0.0, **kwargs):
         super().__init__(**kwargs)
-        self.logits_l1_weight = float(logits_l1_weight) if logits_l1_weight is not None else 0.0
+        self.logits_l1_weight = (
+            float(logits_l1_weight) if logits_l1_weight is not None else 0.0
+        )
 
-    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+    def compute_loss(
+        self, model, inputs, return_outputs=False, num_items_in_batch=None
+    ):
         """
         Add L1 regularization on positive logits (ReLU(logits)).
         """
         outputs = model(**inputs)
-        loss = outputs.get("loss") if isinstance(outputs, dict) else getattr(outputs, "loss", None)
+        loss = (
+            outputs.get("loss")
+            if isinstance(outputs, dict)
+            else getattr(outputs, "loss", None)
+        )
         if loss is None:
             # Fallback to parent implementation if needed (rare for HF models with labels)
             return super().compute_loss(model, inputs, return_outputs)
 
         if self.logits_l1_weight > 0.0:
-            logits = outputs.get("logits") if isinstance(outputs, dict) else getattr(outputs, "logits", None)
+            logits = (
+                outputs.get("logits")
+                if isinstance(outputs, dict)
+                else getattr(outputs, "logits", None)
+            )
             if logits is not None:
                 # L1 on positive activations only -> mean(ReLU(logits + 1))
                 l1_term = torch.relu(logits + 1).mean()
@@ -412,7 +445,9 @@ class L1RegularizedTrainer(Trainer):
                     relu_logits_log = torch.relu(logits)
                     l1_term_log = relu_logits_log.mean()
                     l0_term = (relu_logits_log > 0).float().sum(dim=-1).mean()
-                    logger.info(f"MLM loss: {loss}, L1 loss: {l1_term_log}, L0: {l0_term}")
+                    logger.info(
+                        f"MLM loss: {loss}, L1 loss: {l1_term_log}, L0: {l0_term}"
+                    )
                 loss = loss + self.logits_l1_weight * l1_term
 
         return (loss, outputs) if return_outputs else loss
@@ -859,7 +894,9 @@ def main():
             pad_to_multiple_of=8 if pad_to_multiple_of_8 else None,
             additional_tokens=additional_tokens,
         )
-        logger.info(f"Additional tokens: {tokenizer.convert_ids_to_tokens(additional_tokens)}")
+        logger.info(
+            f"Additional tokens: {tokenizer.convert_ids_to_tokens(additional_tokens)}"
+        )
     else:
         data_collator = DataCollatorForLanguageModeling(
             tokenizer=tokenizer,
