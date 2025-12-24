@@ -6,9 +6,9 @@ DEVICE_BS=64
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 YAML_CONFIG="c.yaml"
 
-BASE_MODEL="bert-vocab-sb-tn"
+BASE_MODEL="bert-base-uncased"
 BASE_NAME=$BASE_MODEL
-SUFFIX="VT-P60"
+SUFFIX="FPT"
 DO_TRAIN_STEP_0=false
 
 if [ "$DO_TRAIN_STEP_0" = true ]; then
@@ -51,7 +51,6 @@ do
         --weight_decay 0.01 \
         --overwrite_output_dir \
         --fp16 \
-        --additional_tokens $BASE_MODEL/additional_tokens.json \
         --log_level info
 
     CKPT_PATH="pretrain/$BASE_NAME-$SUFFIX-$STEP/checkpoint-$STEP"
