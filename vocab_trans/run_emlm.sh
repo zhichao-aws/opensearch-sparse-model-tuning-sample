@@ -20,7 +20,7 @@ GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 # Model / tokenizer choices
 # -------------------------
 # Base MLM checkpoint (input tokenizer stays the same as this model)
-BASE_MODEL="alignment-modernbert-base"
+BASE_MODEL="alignment-modernbert-base-semantic"
 
 # Target tokenizer (U vocab). IDs are taken from this tokenizer's vocab.
 # Choose one that exists under `vocab_trans/` (or set to an HF repo / absolute path).
@@ -70,7 +70,7 @@ for STEP in "${MLM_STEPS[@]}"; do
 
   torchrun --nproc_per_node="${DEVICE}" --master_port "${MASTER_PORT}" run_emlm.py \
     --model_name_or_path "${BASE_MODEL}" \
-    --tokenizer_name "${BASE_MODEL}" \
+    --tokenizer_name answerdotai/modernbert-base \
     --train_file "${TRAIN_FILE}" \
     --max_seq_length "${MAX_SEQ_LENGTH}" \
     --target_tokenizer_path "${TARGET_TOKENIZER_PATH}" \
@@ -97,6 +97,7 @@ for STEP in "${MLM_STEPS[@]}"; do
     --weight_decay 0.01 \
     --overwrite_output_dir \
     --fp16 \
-    --log_level info
+    --log_level info \
+    --preprocessing_num_workers 20
 done
 
