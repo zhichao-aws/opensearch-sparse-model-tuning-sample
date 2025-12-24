@@ -741,3 +741,4 @@ if __name__ == "__main__":
 # python transform.py --save_path bert-vocab-all-random --all_random --use_target_norm --set_bias
 # python transform.py --save_path bert-vocab-new-random --new_random --use_target_norm --set_bias
 # python transform.py --source_model roberta-large --save_path roberta-large-sb-tn --set_bias --use_target_norm --save_additional_tokens
+# python transform.py --source_model bert-base-cased --save_path bert-base-cased-sb-tn --set_bias --use_target_norm --save_additional_tokens

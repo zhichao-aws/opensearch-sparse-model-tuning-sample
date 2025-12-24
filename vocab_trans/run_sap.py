@@ -1,5 +1,10 @@
+import os
+import sys
 from dataclasses import dataclass, field
 from typing import Optional
+
+# Add the project root to the python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import torch
 import torch.nn as nn
@@ -12,17 +17,17 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
-from transformers.utils import logging
+from transformers.utils import logging as transformers_logging
 
-from scripts.model.models import *
+from scripts.model.models import AlignmentMDBertForMaskedLM
 
-logger = logging.get_logger(__name__)
+logger = transformers_logging.get_logger(__name__)
 
 
 class SAPTrainer(Trainer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.teacher = AutoModelForMaskedLM.from_pretrained("splade-v3")
+        self.teacher = AutoModelForMaskedLM.from_pretrained("../splade-v3")
         self.teacher.eval()
         self._move_model_to_device(self.teacher, self.args.device)
         self.teacher = self._wrap_model(self.teacher, training=False)
@@ -111,7 +116,7 @@ def main():
     set_seed(training_args.seed)
 
     dataset = load_dataset(
-        "json", data_files="data/wikibook.ml128.jsonl", streaming=False
+        "json", data_files="../data/wikibook.ml128.jsonl", streaming=False
     )["train"]
 
     # Keep original dataset columns (e.g., 'text') for custom data collator
@@ -120,7 +125,7 @@ def main():
     model_tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path, use_fast=True
     )
-    teacher_tokenizer = AutoTokenizer.from_pretrained("splade-v3", use_fast=True)
+    teacher_tokenizer = AutoTokenizer.from_pretrained("../splade-v3", use_fast=True)
     data_collator = SAPDataCollator(
         model_tokenizer=model_tokenizer, teacher_tokenizer=teacher_tokenizer
     )
