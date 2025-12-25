@@ -7,7 +7,12 @@ import torch
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoModelForMaskedLM, AutoTokenizer, DataCollatorWithPadding
+from transformers import AutoConfig, AutoModelForMaskedLM, AutoTokenizer, DataCollatorWithPadding
+
+from scripts.model.models import AlignmentMDBertForMaskedLM, AlignmentMDBertConfig
+
+AutoConfig.register("alignment-modernbert", AlignmentMDBertConfig)
+AutoModelForMaskedLM.register(AlignmentMDBertConfig, AlignmentMDBertForMaskedLM)
 
 
 def set_seed(seed: int = 42) -> None:
@@ -206,15 +211,15 @@ def main() -> None:
             _append_samples("sparse_activation", rep_sample)
 
             # 2) input token 对应 logit（逐位置，排除 padding）
-            # logits.gather(2, input_ids.unsqueeze(-1)) -> (B, L, 1)
-            token_logits = logits.gather(2, batch["input_ids"].unsqueeze(-1)).squeeze(
-                -1
-            )
-            token_logits = token_logits[attention_mask == 1]
-            tok_sample = _maybe_sample_1d(
-                token_logits.reshape(-1), args.sample_per_batch
-            )
-            _append_samples("input_token_logit", tok_sample)
+            # # logits.gather(2, input_ids.unsqueeze(-1)) -> (B, L, 1)
+            # token_logits = logits.gather(2, batch["input_ids"].unsqueeze(-1)).squeeze(
+            #     -1
+            # )
+            # token_logits = token_logits[attention_mask == 1]
+            # tok_sample = _maybe_sample_1d(
+            #     token_logits.reshape(-1), args.sample_per_batch
+            # )
+            # _append_samples("input_token_logit", tok_sample)
 
     print(
         "\nPercentiles: (注意：这里打印的是应用 cut 之前的统计；且默认 sparse_activation 仅统计 >0 的值)"

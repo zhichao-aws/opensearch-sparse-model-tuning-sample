@@ -115,6 +115,9 @@ def main():
     parser.add_argument(
         "--max_train_samples", type=int, default=200_000, help="Max train samples"
     )
+    parser.add_argument(
+        "--seed", type=int, default=None, help="Random seed for reproducibility"
+    )
     args = parser.parse_args()
 
     cfg = Config()
@@ -126,6 +129,8 @@ def main():
         cfg.train_dataset = args.train_dataset
     if args.max_train_samples:
         cfg.max_train_samples = args.max_train_samples
+    if args.seed:
+        cfg.seed = args.seed
     set_seed(cfg.seed)
     os.makedirs(cfg.output_dir, exist_ok=True)
 
