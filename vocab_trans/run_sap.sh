@@ -6,12 +6,12 @@ DEVICE_BS=32
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 
 torchrun --nproc_per_node=$DEVICE --master_port 29503 run_sap.py \
-    --model_name_or_path alignment-modernbert-base \
+    --model_name_or_path alignment-modernbert-base-sub \
     --per_device_train_batch_size $DEVICE_BS \
     --per_device_eval_batch_size $DEVICE_BS \
     --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
     --do_train \
-    --output_dir output_sap/20k \
+    --output_dir output_sap/sub-20k \
     --dataloader_drop_last \
     --logging_steps 50 \
     --max_steps 20000 \
@@ -22,4 +22,16 @@ torchrun --nproc_per_node=$DEVICE --master_port 29503 run_sap.py \
     --learning_rate 3e-5 \
     --weight_decay 0.01 \
     --overwrite_output_dir \
+    --train_only_embeddings \
     --fp16
+
+cd ..
+
+python probe_activation_percentiles.py \
+    --model_id vocab_trans/output_sap/sub-20k/checkpoint-20000 \
+    --tokenizer_id answerdotai/modernbert-base \
+    --cut_percent 60 \
+    --save_path vocab_trans/output_sap/sub-20k-P60 \
+    --include_zeros
+
+bash run_train_eval.sh c.yaml
