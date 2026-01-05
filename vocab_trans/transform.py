@@ -81,16 +81,17 @@ def parse_args():
         help="Rescale the norm of new embeddings to expected norm",
     )
     parser.add_argument(
-        "--use_target_norm",
-        action="store_true",
-        default=False,
-        help="Rescale final embeddings and bias to match target model's average norm (overlap tokens)",
+        "--no_target_norm",
+        action="store_false",
+        dest="use_target_norm",
+        help="Disable rescaling final embeddings and bias to match target model's average norm (default: enabled)",
     )
+    parser.set_defaults(use_target_norm=True)
     parser.add_argument(
         "--target_norm_value",
         type=float,
         default=None,
-        help="Optional. If provided, overrides the target norm used by --use_target_norm. "
+        help="Optional. If provided, overrides the target norm used by target norm rescaling (enabled by default). "
         "When set, embeddings (and bias if present) will be rescaled so that the average norm "
         "of overlap-token embeddings equals this value, without needing to compute it from target_model.",
     )
@@ -732,13 +733,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# python transform.py --save_path bert-vocab
-# python transform.py --save_path bert-vocab-sb-tn --set_bias --use_target_norm
-# python transform.py --save_path bert-vocab-tn --use_target_norm
-# python transform.py --save_path bert-vocab-sb-tn-mean --set_bias --use_target_norm --use_mean
-# python transform.py --save_path bert-vocab-sb-tn-sub --set_bias --use_target_norm --use_sub
-# python transform.py --save_path bert-vocab-all-random --all_random --use_target_norm --set_bias
-# python transform.py --save_path bert-vocab-new-random --new_random --use_target_norm --set_bias
-# python transform.py --source_model roberta-large --save_path roberta-large-sb-tn --set_bias --use_target_norm --save_additional_tokens
-# python transform.py --source_model bert-base-cased --save_path bert-base-cased-sb-tn --set_bias --use_target_norm --save_additional_tokens

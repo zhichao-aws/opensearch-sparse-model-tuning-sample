@@ -6,9 +6,9 @@ DEVICE_BS=64
 GRADIENT_ACCUMULATION_STEPS=$((TOTAL_BS / DEVICE_BS / DEVICE))
 YAML_CONFIG="c.yaml"
 
-BASE_MODEL="bert-base-uncased"
-BASE_NAME=$BASE_MODEL
-SUFFIX="FPT"
+BASE_MODEL="vocab_trans/mdbert-vt"
+BASE_NAME="mdbert-vt"
+SUFFIX=""
 DO_TRAIN_STEP_0=false
 
 if [ "$DO_TRAIN_STEP_0" = true ]; then
@@ -29,7 +29,7 @@ for STEP in "${STEPS[@]}"
 do
     torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
         --model_name_or_path $BASE_MODEL \
-        --train_file 'data/wikibook.ml128.jsonl' \
+        --train_file '/home/ubuntu/opensearch-sparse-model-tuning-sample/data/wikibook.ml128.jsonl' \
         --tokenizer_name bert-base-uncased \
         --max_seq_length 128 \
         --mlm_probability 0.3 \
@@ -51,7 +51,8 @@ do
         --weight_decay 0.01 \
         --overwrite_output_dir \
         --fp16 \
-        --log_level info
+        --log_level info \
+        --additional_tokens $BASE_MODEL/additional_tokens.json
 
     CKPT_PATH="pretrain/$BASE_NAME-$SUFFIX-$STEP/checkpoint-$STEP"
     OUT_DIR="output/paper/bi/$BASE_NAME-$SUFFIX-$STEP/final"

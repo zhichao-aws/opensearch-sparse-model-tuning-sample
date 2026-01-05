@@ -21,3 +21,6 @@ dotenv
 orjson
 evaluate
 tensorboard
+mteb==1.39.7
+sentence-transformers==5.0.0
+deepfocus==1.0.1
