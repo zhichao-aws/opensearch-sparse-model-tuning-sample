@@ -25,8 +25,8 @@ def main():
 
     args = parser.parse_args()
 
-    # 根据 output_dir 确定 checkpoint 路径
-    # 假设 training script 保存到了 output_dir/final
+    # Determine checkpoint path based on output_dir
+    # Assume training script saved to output_dir/final
     model_path = os.path.join(args.output_dir, "final")
     print(f"Loading model from: {model_path}")
 
@@ -34,13 +34,13 @@ def main():
     tasks = mteb.get_tasks(tasks=["ChemHotpotQARetrieval", "ChemNQRetrieval"])
     evaluation = mteb.MTEB(tasks=tasks)
 
-    # 根据 output_dir 确定评估结果保存路径
-    # 保持类似原有的结构： ./results_mteb_chem/{model_name}
-    # 简单的做法是直接用 output_dir 的名字
+    # Determine evaluation result storage path based on output_dir
+    # Maintain structure similar to original: ./results_mteb_chem/{model_name}
+    # Simple approach is to use the name of output_dir directly
     model_name = os.path.basename(args.output_dir.rstrip("/"))
     eval_output_folder = f"./results_mteb_chem/{model_name}{args.max_active_dims if args.max_active_dims else ''}"
 
-    # 注意：MTEB 目前不支持 sparse tensor，所以要 convert_to_sparse_tensor=False :contentReference[oaicite:2]{index=2}
+    # Note: MTEB does not currently support sparse tensors, so set convert_to_sparse_tensor=False
     evaluation.run(
         model,
         eval_splits=["test"],

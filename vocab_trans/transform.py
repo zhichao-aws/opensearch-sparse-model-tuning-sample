@@ -252,7 +252,7 @@ def create_new_embeddings(
         logger.info("Preparing bias calculation...")
         if target_model is None:
             raise ValueError(
-                "set_bias=True 需要加载 target_model，但当前未加载。请移除 --set_bias 或确保会加载 target_model。"
+                "set_bias=True requires target_model to be loaded, but it is not. Please remove --set_bias or ensure target_model is loaded."
             )
         source_output = source_model.get_output_embeddings()
         target_output = target_model.get_output_embeddings()
@@ -434,7 +434,7 @@ def create_new_embeddings(
     else:
         if target_model is None:
             raise ValueError(
-                "当前需要用 target_model 的词向量做相似度插值，但 target_model 未加载。请移除 --use_mean/--all_random/--new_random 以外的插值设置，或确保加载 target_model。"
+                "Similarity interpolation with target_model token vectors is required, but target_model is not loaded. Please remove interpolation settings other than --use_mean/--all_random/--new_random, or ensure target_model is loaded."
             )
         # Target embeddings needed for similarity-based interpolation
         target_emb = target_model.get_input_embeddings()
@@ -545,8 +545,8 @@ def apply_and_save(
         else:
             if target_model is None:
                 raise ValueError(
-                    "use_target_norm=True 需要加载 target_model 来计算 target norm，但当前未加载。"
-                    "请提供 --target_norm_value，或确保会加载 target_model。"
+                    "use_target_norm=True requires loading target_model to calculate target norm, but it is not currently loaded. "
+                    "Please provide --target_norm_value, or ensure target_model is loaded."
                 )
             # Calculate average norm of overlap tokens in TARGET model
             target_emb = target_model.get_input_embeddings()
@@ -649,7 +649,7 @@ def main():
     new_modes = [args.use_mean, args.use_sub, args.all_random, args.new_random]
     if sum(bool(x) for x in new_modes) > 1:
         raise ValueError(
-            "参数冲突：--use_mean/--use_sub/--all_random/--new_random 只能同时启用一个。"
+            "Parameter conflict: only one of --use_mean/--use_sub/--all_random/--new_random can be enabled at a time."
         )
 
     # Load Tokenizers
@@ -666,7 +666,7 @@ def main():
     )
 
     # Load Models
-    # target_model 只有在需要 target embedding/bias/norm 时才需要加载
+    # target_model is only needed when target embedding/bias/norm is required
     needs_target_model = (
         (args.use_target_norm and args.target_norm_value is None)
         or args.set_bias

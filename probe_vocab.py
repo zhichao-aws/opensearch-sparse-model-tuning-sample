@@ -160,7 +160,7 @@ if model_id:
             )
             stats_ft = get_stats(ft_model)
 
-            # p_token 均值（仅微调后有）
+            # p_token mean (only available after fine-tuning)
             p_token = torch.load(
                 f"output/paper/bi/{finetuned_pt}/final/evaluate_marco/msmarco.corpus.bin"
             )
@@ -186,7 +186,7 @@ if model_id:
         except Exception:
             pass
 
-    # 打印对齐表格
+    # Print aligned table
     headers = [
         "Variant",
         "Stage",
@@ -202,7 +202,7 @@ if model_id:
         "pTok[A]",
     ]
 
-    # 将行转为二维数组（字符串）
+    # Convert rows to 2D array (strings)
     mat = []
     for r in rows:
         mat.append(
@@ -222,14 +222,14 @@ if model_id:
             ]
         )
 
-    # 计算每列最大宽度
+    # Calculate maximum width for each column
     col_widths = [len(h) for h in headers]
     for row in mat:
         for i, cell in enumerate(row):
             if len(cell) > col_widths[i]:
                 col_widths[i] = len(cell)
 
-    # 格式化打印
+    # Formatted print
     def print_row(row_vals):
         print("  ".join(val.ljust(col_widths[i]) for i, val in enumerate(row_vals)))
 

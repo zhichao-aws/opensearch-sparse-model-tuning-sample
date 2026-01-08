@@ -25,10 +25,10 @@ def set_seed(seed: int = 42) -> None:
 def sparse_activation(
     logits: torch.Tensor, attention_mask: torch.Tensor
 ) -> torch.Tensor:
-    """对 (B, L, V) 的 logits 做 padding mask 后，沿 token 维 max-pool 得到 (B, V)。
+    """For logits (B, L, V), perform padding mask and then max-pool along the token dimension to get (B, V).
 
-    注意：这里返回的是 **原始 max logits**（可能为负），不包含 relu / log1p。
-    后续统计时默认会过滤掉 <=0 的值（除非传 --include_zeros）。
+    Note: This returns **original max logits** (can be negative), excluding relu / log1p.
+    Subsequent statistics will default to filtering out values <= 0 (unless --include_zeros is passed).
     """
     # logits: (B, L, V), attention_mask: (B, L)
     masked_logits = logits.masked_fill((attention_mask == 0).unsqueeze(-1), -torch.inf)
@@ -47,7 +47,7 @@ def parse_percentiles(s: str) -> List[float]:
 
 
 def _maybe_sample_1d(values_1d: torch.Tensor, k: int) -> torch.Tensor:
-    """从 1D tensor 里做带放回采样 k 个（GPU 友好）。"""
+    """Sample k elements from a 1D tensor with replacement (GPU-friendly)."""
     n = values_1d.numel()
     if n == 0:
         return values_1d
@@ -59,54 +59,54 @@ def _maybe_sample_1d(values_1d: torch.Tensor, k: int) -> torch.Tensor:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "正常输入（不做 MLM mask）下，统计 activation 的 percentile。"
-            "默认统计 sparse maxpool+log1p(relu) 后的非零激活分布，并额外统计输入 token 对应 logit 分布。"
+            "Calculate activation percentiles under normal input (no MLM mask). "
+            "Defaults to statistics of non-zero activations after sparse maxpool+log1p(relu), with additional statistics for logit distribution corresponding to input tokens."
         )
     )
-    parser.add_argument("--model_id", type=str, required=True, help="模型路径或 HF ID")
+    parser.add_argument("--model_id", type=str, required=True, help="Model path or HF ID")
     parser.add_argument(
         "--tokenizer_id",
         type=str,
         default="bert-base-uncased",
-        help="tokenizer 路径或 HF ID",
+        help="tokenizer path or HF ID",
     )
-    parser.add_argument("--dataset", type=str, default="msmarco", help="BeIR 数据集名")
+    parser.add_argument("--dataset", type=str, default="msmarco", help="BeIR dataset name")
     parser.add_argument(
         "--data_file",
         type=str,
         default=None,
-        help="本地 jsonl 文件路径，若指定则优先使用此文件",
+        help="Local jsonl file path; if specified, this file is used with priority",
     )
     parser.add_argument("--num_docs", type=int, default=20000)
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--seed", type=int, default=42)
 
-    # percentile 相关
+    # percentile related
     parser.add_argument(
         "--percentiles",
         type=str,
         default="10,20,30,40,50,60,70,80,90,95,99,99.5,99.9",
-        help="逗号分隔，例如 50,90,99,99.9",
+        help="Comma-separated, e.g., 50,90,99,99.9",
     )
     parser.add_argument(
         "--sample_per_batch",
         type=int,
         default=20000,
-        help="每个 batch 对每个统计项采样多少个值（带放回）。",
+        help="How many values to sample for each statistical item per batch (with replacement).",
     )
     parser.add_argument(
         "--max_samples",
         type=int,
         default=1_000_000,
-        help="每个统计项最多保留多少采样点（到上限后就不再追加）。",
+        help="Maximum number of sampling points to keep for each statistical item (stop appending after reaching the limit).",
     )
     parser.add_argument(
         "--include_zeros",
         action="store_true",
         help=(
-            "是否把 <=0（包含 0 和负值）的 sparse max-logit 也纳入 sparse_activation 分布。"
-            "默认只统计 >0 的值（相当于在“条件分布：activation>0”上算 percentile）。"
+            "Whether to include sparse max-logits <= 0 (including 0 and negative values) in the sparse_activation distribution. "
+            "Defaults to only counting values > 0 (equivalent to calculating percentiles on the 'conditional distribution: activation > 0')."
         ),
     )
     parser.add_argument(
@@ -114,8 +114,8 @@ def main() -> None:
         type=float,
         default=None,
         help=(
-            "如果设置（例如 60），会在打印完 percentiles 后，把当前采样分布的 "
-            "P(cut_percent) 值从输出 embedding 的 bias 里整体减去，并可选保存模型。"
+            "If set (e.g., 60), after printing percentiles, the P(cut_percent) value of the current sampling distribution "
+            "will be subtracted from the bias of the output embedding, and the model can optionally be saved."
         ),
     )
     parser.add_argument(
@@ -168,7 +168,7 @@ def main() -> None:
         collate_fn=data_collator,
     )
 
-    # 采样缓存（只存 CPU float32）
+    # Sample cache (CPU float32 only)
     samples: Dict[str, List[np.ndarray]] = {
         "sparse_activation": [],
         "input_token_logit": [],
@@ -210,7 +210,7 @@ def main() -> None:
             rep_sample = _maybe_sample_1d(rep_vals, args.sample_per_batch)
             _append_samples("sparse_activation", rep_sample)
 
-            # 2) input token 对应 logit（逐位置，排除 padding）
+            # 2) input token logit (position-wise, excluding padding)
             # # logits.gather(2, input_ids.unsqueeze(-1)) -> (B, L, 1)
             # token_logits = logits.gather(2, batch["input_ids"].unsqueeze(-1)).squeeze(
             #     -1
@@ -222,7 +222,7 @@ def main() -> None:
             # _append_samples("input_token_logit", tok_sample)
 
     print(
-        "\nPercentiles: (注意：这里打印的是应用 cut 之前的统计；且默认 sparse_activation 仅统计 >0 的值)"
+        "\nPercentiles: (Note: Stats printed here are before applying cut; sparse_activation defaults to only counting values > 0)"
     )
     for key, chunks in samples.items():
         if not chunks:
@@ -255,7 +255,7 @@ def main() -> None:
                 hasattr(output_embeddings, "bias")
                 and output_embeddings.bias is not None
             ):
-                # 减去 cutoff
+                # Subtract cutoff
                 with torch.no_grad():
                     output_embeddings.bias.data -= cutoff_value
                 print(f"Done. Subtracted {cutoff_value:.6f} from bias.")

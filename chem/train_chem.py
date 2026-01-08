@@ -14,7 +14,7 @@ from sentence_transformers.sparse_encoder import (
     losses,
 )
 
-# BatchSamplers 的 import 在不同版本位置可能略有差异，做个兼容
+# BatchSamplers imports may vary slightly between versions, making it compatible
 try:
     from sentence_transformers.training_args import BatchSamplers
 except Exception:
@@ -26,17 +26,17 @@ except Exception:
 
 @dataclass
 class Config:
-    # 训练数据：推荐用“化学领域合成 query–paragraph 对”的大数据（1M+ 级别）
-    # 你也可以换成别的“query-doc pair”数据集
+    # Training data: recommended to use large-scale "synthetic query-paragraph pairs in the chemical domain" (1M+ level)
+    # You can also replace it with other "query-doc pair" datasets
     train_dataset: str = "BASF-AI/dolma-chem-only-query-generated"
     train_split: str = "train"
 
-    # 从普通 BERT 初始化一个 SPLADE（fill-mask 模型）
+    # Initialize a SPLADE (fill-mask model) from a standard BERT
     base_model: str = "mlm_model-1000-b3"
-    # 超参（你可以按算力/数据再调）
+    # Hyperparameters (you can adjust according to computing power/data)
     output_dir: str = "./models/splade-mlm-1000-b3-chem"
 
-    # 训练数据量（先跑通建议用小一点；正式实验可以拉大）
+    # Training data size (recommend smaller for testing; can be increased for formal experiments)
     max_train_samples: int = 200_000
     max_eval_samples: int = 5_000
 
@@ -47,7 +47,7 @@ class Config:
     warmup_ratio: float = 0.1
     fp16: bool = True
 
-    # SPLADE L1 正则（论文/实现里常见做法：query 正则小或 0，doc 正则略大）
+    # SPLADE L1 regularization (common practice in papers/implementations: query reg small or 0, doc reg slightly larger)
     query_reg: float = 0.0
     doc_reg: float = 3e-3
 
@@ -67,8 +67,8 @@ def set_seed(seed: int):
 
 def guess_pair_columns(column_names):
     """
-    尽量自动猜训练集里“query 列”和“doc/passage 列”叫什么。
-    猜不到就让你手动指定（改下面 query_col / doc_col）。
+    Try to automatically guess the names of "query column" and "doc/passage column" in the training set.
+    If it cannot be guessed, you will need to specify it manually (modify query_col / doc_col below).
     """
     query_cands = [
         "query",
@@ -142,7 +142,7 @@ def main():
     # 2) Pick (query, doc) columns
     query_col, doc_col = guess_pair_columns(ds.column_names)
 
-    # 如果你这一步猜不到（query_col/doc_col 是 None），就手动改成你数据集真实列名
+    # If you can't guess at this step (query_col/doc_col is None), manually change to your dataset's actual column names
     if query_col is None or doc_col is None:
         raise ValueError(
             f"Cannot infer query/doc columns from {ds.column_names}. "
@@ -164,7 +164,7 @@ def main():
     eval_ds = split["test"]
 
     # 4) Rename columns to what SparseMultipleNegativesRankingLoss expects: anchor / positive
-    #    （anchor=queries, positive=docs）
+    #    (anchor=queries, positive=docs)
     keep_cols = {query_col: "anchor", doc_col: "positive"}
     drop_cols = [c for c in train_ds.column_names if c not in keep_cols]
 
@@ -175,7 +175,7 @@ def main():
 
     # 5) Init SPLADE from a plain BERT MLM checkpoint
     model = SparseEncoder(cfg.base_model)
-    # Retrieval 常用 dot；不设也能跑，但建议显式设一下
+    # Retrieval usually uses dot; can run without setting, but explicit setting is recommended
     model.similarity_fn_name = "dot"
     model.max_seq_length = 512
 
@@ -204,7 +204,7 @@ def main():
         save_total_limit=2,
         logging_steps=200,
         run_name=os.path.basename(cfg.output_dir.rstrip("/")),
-        # MultipleNegativesRankingLoss 系列通常建议 batch 内不重复
+        # MultipleNegativesRankingLoss series usually recommend no duplicates within a batch
         **(
             {"batch_sampler": BatchSamplers.NO_DUPLICATES}
             if BatchSamplers is not None

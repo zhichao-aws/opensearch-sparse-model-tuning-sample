@@ -22,23 +22,23 @@ def set_seed(seed: int = 42) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="只计算 MLM loss / perplexity（BeIR corpus）。"
+        description="Calculate only MLM loss / perplexity (BeIR corpus)."
     )
-    parser.add_argument("--model_id", type=str, required=True, help="模型路径或 HF ID")
+    parser.add_argument("--model_id", type=str, required=True, help="Model path or HF ID")
     parser.add_argument(
         "--tokenizer_id",
         type=str,
         default="bert-base-uncased",
-        help="tokenizer 路径或 HF ID",
+        help="Tokenizer path or HF ID",
     )
-    parser.add_argument("--dataset", type=str, default="msmarco", help="BeIR 数据集名")
+    parser.add_argument("--dataset", type=str, default="msmarco", help="BeIR dataset name")
     parser.add_argument(
         "--data_file",
         type=str,
         default=None,
-        help="本地 jsonl 文件路径，若指定则优先使用此文件",
+        help="Local jsonl file path; if specified, this file is used with priority",
     )
-    parser.add_argument("--num_docs", type=int, default=2000, help="取前多少篇文档")
+    parser.add_argument("--num_docs", type=int, default=2000, help="Number of documents to take from the beginning")
     parser.add_argument("--max_length", type=int, default=512)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--mlm_probability", type=float, default=0.15)
@@ -50,7 +50,7 @@ def main() -> None:
 
     if args.data_file:
         print(f"Loading data from file: {args.data_file}")
-        # load_dataset("json", data_files=...) 默认生成 train split
+        # load_dataset("json", data_files=...) defaults to generating train split
         corpus = load_dataset("json", data_files=args.data_file, split="train")
     else:
         print(f"Loading BeIR/{args.dataset} corpus...")
@@ -71,7 +71,7 @@ def main() -> None:
     model.eval()
 
     def preprocess_function(examples):
-        # 和你原脚本保持一致：只用 text
+        # Consistent with your original script: only use text
         texts = [t for t in examples["text"]]
         return tokenizer(texts, truncation=True, max_length=args.max_length)
 
