@@ -1,3 +1,7 @@
+## Download model checkpoints
+
+anonymous link: https://zenodo.org/records/18158860?preview=1&token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6IjlmNjcwYmFmLTgxMzYtNGVlMi1iZTgwLTk4OGUzNmVjNmYzNSIsImRhdGEiOnt9LCJyYW5kb20iOiIxMGM5MmYwY2JhMjM3MWM5MGNjNWZkYjgzMWJjZDFlNyJ9.-5WvEbpYuLWW7YAAgG-ztNgJu8nhJUWkY5WILXOPvyGm_TIKs8yzmFDEcTCRTw3kMPi6ogJeFBNY-khgxQbNOw
+
 ## Prepare the environment
 
 ### Conda environment
