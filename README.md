@@ -34,9 +34,9 @@ cd ..
 
 ### run VT training
 
-1. prepare data for MLM (wikibook). We used script from an exising repo https://github.com/ma787639046/bowdpr/tree/main/examples/pretrain. 
+1. prepare data for MLM (wikibook). 
 ```
-python prepare_pretrain_data.py --save_to /path/to/this_repo/data/wikibook.ml128.jsonl --maxlen 128
+python prepare_mlm_data.py --save_to data/wikibook.ml128.jsonl --maxlen 128
 ```
 
 2. prepare data for LSR
@@ -50,4 +50,17 @@ cd ..
 2. run training. It trains model with MLM task, then run LSR training
 ```
 bash run_vt.sh
+```
+
+- if using mlm checkpoint from the anonymous link, just run LSR training:
+
+```
+bash run_train_eval.sh c.yaml
+```
+
+- if using lsr checkpoint from the anonymous link, just run eval:
+
+```
+torchrun --nproc_per_node=8 evaluate_beir.py c.yaml
+torchrun --nproc_per_node=8 evaluate_marco.py c.yaml
 ```

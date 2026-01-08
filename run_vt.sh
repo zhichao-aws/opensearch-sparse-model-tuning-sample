@@ -29,7 +29,7 @@ for STEP in "${STEPS[@]}"
 do
     torchrun --nproc_per_node=$DEVICE --master_port 29501 run_mlm.py \
         --model_name_or_path $BASE_MODEL \
-        --train_file '/home/ubuntu/opensearch-sparse-model-tuning-sample/data/wikibook.ml128.jsonl' \
+        --train_file 'data/wikibook.ml128.jsonl' \
         --tokenizer_name bert-base-uncased \
         --max_seq_length 128 \
         --mlm_probability 0.3 \
