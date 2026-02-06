@@ -59,9 +59,8 @@ class MarginMSELoss(SparseTrainingLoss):
         self.use_in_batch_negatives = use_in_batch_negatives
         self.temperature = temperature
         self.loss = torch.nn.MSELoss()
-        self.margin_func = (
-            lambda x: x[:, 0].reshape(-1, 1).expand(x.shape[0], x.shape[1] - 1)
-            - x[:, 1:]
+        self.margin_func = lambda x: (
+            x[:, 0].reshape(-1, 1).expand(x.shape[0], x.shape[1] - 1) - x[:, 1:]
         )
         super().__init__(weight)
 

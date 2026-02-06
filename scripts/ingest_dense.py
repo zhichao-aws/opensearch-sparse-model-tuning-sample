@@ -68,8 +68,6 @@ async def ingest_dense(
                 body = {
                     "settings": {
                         "index": {
-                            "knn": True,
-                            "knn.algo_param.ef_search": 100,
                             "number_of_shards": 12,  # Increased shard count for better distribution if needed, matching ingest.py default often
                             "number_of_replicas": 0,
                         }
@@ -78,12 +76,7 @@ async def ingest_dense(
                         "properties": {
                             "embedding": {
                                 "type": "knn_vector",
-                                "dimension": embedding_dim,
-                                "method": {
-                                    "name": "hnsw",
-                                    "engine": "faiss",
-                                    "space_type": "cosinesimil",
-                                },
+                                "dimension": 1024
                             },
                             "text": {"type": "text"},
                             "id": {"type": "keyword"},

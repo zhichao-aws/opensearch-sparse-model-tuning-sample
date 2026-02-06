@@ -44,18 +44,36 @@ async def search_dense(
         search_results = await batch_search(
             queries=embeddings,
             index_name=index_name,
-            endpoint_lambda=lambda index_name: f"http://localhost:9200/{index_name}/_search",
+            endpoint_lambda=lambda index_name: (
+                f"http://localhost:9200/{index_name}/_search"
+            ),
             get_query_lambda=lambda query_vec: {
                 "size": result_size,
                 "query": {
-                    "knn": {
-                        "embedding": {"vector": query_vec.tolist(), "k": result_size}
+                    "script_score": {
+                        "query": {
+                            "match_all": {}
+                        },
+                        "script": {
+                            "source": "knn_score",
+                            "lang": "knn",
+                            "params": {
+                                "field": "embedding",
+                                "query_value": query_vec.tolist(),
+                                "space_type": "cosinesimil"
+                            }
+                        }
                     }
                 },
                 "_source": ["id"],
             },
             interval=0.001,
         )
+
+        # Check if batch_search returned an error
+        if isinstance(search_results, dict) and "error" in search_results:
+            logger.error(f"Search failed: {search_results['error']}")
+            raise Exception(f"Search failed: {search_results['error']}")
 
         for i, (_id, res) in enumerate(zip(ids, search_results)):
             if return_text:

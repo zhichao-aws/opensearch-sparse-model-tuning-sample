@@ -75,7 +75,9 @@ class AlignmentMDBertForMaskedLM(ModernBertForMaskedLM):
         return_dict: Optional[bool] = None,
         **kwargs,
     ) -> Union[tuple[torch.Tensor], MaskedLMOutput]:
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
         self._maybe_set_compile()
 
         if self.config._attn_implementation == "flash_attention_2":
@@ -85,19 +87,43 @@ class AlignmentMDBertForMaskedLM(ModernBertForMaskedLM):
                         batch_size, seq_len = inputs_embeds.shape[:2]
                     else:
                         batch_size, seq_len = input_ids.shape[:2]
-                device = input_ids.device if input_ids is not None else inputs_embeds.device
+                device = (
+                    input_ids.device if input_ids is not None else inputs_embeds.device
+                )
 
                 if attention_mask is None:
-                    attention_mask = torch.ones((batch_size, seq_len), device=device, dtype=torch.bool)
+                    attention_mask = torch.ones(
+                        (batch_size, seq_len), device=device, dtype=torch.bool
+                    )
 
                 if inputs_embeds is None:
                     with torch.no_grad():
-                        input_ids, indices, cu_seqlens, max_seqlen, position_ids, labels = _unpad_modernbert_input(
-                            inputs=input_ids, attention_mask=attention_mask, position_ids=position_ids, labels=labels
+                        (
+                            input_ids,
+                            indices,
+                            cu_seqlens,
+                            max_seqlen,
+                            position_ids,
+                            labels,
+                        ) = _unpad_modernbert_input(
+                            inputs=input_ids,
+                            attention_mask=attention_mask,
+                            position_ids=position_ids,
+                            labels=labels,
                         )
                 else:
-                    inputs_embeds, indices, cu_seqlens, max_seqlen, position_ids, labels = _unpad_modernbert_input(
-                        inputs=inputs_embeds, attention_mask=attention_mask, position_ids=position_ids, labels=labels
+                    (
+                        inputs_embeds,
+                        indices,
+                        cu_seqlens,
+                        max_seqlen,
+                        position_ids,
+                        labels,
+                    ) = _unpad_modernbert_input(
+                        inputs=inputs_embeds,
+                        attention_mask=attention_mask,
+                        position_ids=position_ids,
+                        labels=labels,
                     )
 
         outputs = self.model(
@@ -136,11 +162,19 @@ class AlignmentMDBertForMaskedLM(ModernBertForMaskedLM):
         loss = None
         if labels is not None:
             # IMPORTANT: output vocab size may differ from input vocab size
-            loss = self.loss_function(logits, labels, vocab_size=int(logits.shape[-1]), **kwargs)
+            loss = self.loss_function(
+                logits, labels, vocab_size=int(logits.shape[-1]), **kwargs
+            )
 
         if self.config._attn_implementation == "flash_attention_2":
-            with nullcontext() if self.config.repad_logits_with_grad or labels is None else torch.no_grad():
-                logits = _pad_modernbert_output(inputs=logits, indices=indices, batch=batch_size, seqlen=seq_len)
+            with (
+                nullcontext()
+                if self.config.repad_logits_with_grad or labels is None
+                else torch.no_grad()
+            ):
+                logits = _pad_modernbert_output(
+                    inputs=logits, indices=indices, batch=batch_size, seqlen=seq_len
+                )
 
         if not return_dict:
             output = (logits,)

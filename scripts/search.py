@@ -63,7 +63,9 @@ async def search(
         search_results = await batch_search(
             queries=queries_encoded,
             index_name=index_name,
-            endpoint_lambda=lambda index_name: f"""http://localhost:9200/{index_name}/_search""",
+            endpoint_lambda=lambda index_name: (
+                f"""http://localhost:9200/{index_name}/_search"""
+            ),
             get_query_lambda=lambda query: {
                 "size": result_size,
                 "query": sparse_embedding_to_query(query, query_prune=query_prune),
