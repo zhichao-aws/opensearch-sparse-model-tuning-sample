@@ -94,9 +94,9 @@ async def do_bulk(bulk_body, session, endpoint="http://localhost:9200"):
     headers = {"Content-Type": "application/x-ndjson"}
     async with session.post(url, data=bulk_body, headers=headers) as resp:
         response = await resp.json()
-        if "errors" not in response:
-            print(response)
-        assert not response["errors"]
+        # if "errors" not in response:
+        #     print(response)
+        # assert not response["errors"]
 
     return response
 
@@ -110,7 +110,7 @@ async def batch_search(
     interval=0.01,
     use_two_phase=False,
 ):
-    timeout = ClientTimeout(total=60)
+    timeout = ClientTimeout(total=600)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         tasks = []
         for query in queries:

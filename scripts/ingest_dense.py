@@ -49,7 +49,7 @@ async def ingest_dense(
     logger.info(
         f"Loading SentenceTransformer model: {model_id} on {accelerator.device}"
     )
-    model = SentenceTransformer(model_id, device=accelerator.device)
+    model = SentenceTransformer(model_id, device=accelerator.device, trust_remote_code=True)
     model.max_seq_length = max_length
 
     # Get dimension
@@ -76,7 +76,7 @@ async def ingest_dense(
                         "properties": {
                             "embedding": {
                                 "type": "knn_vector",
-                                "dimension": 1024
+                                "dimension": embedding_dim
                             },
                             "text": {"type": "text"},
                             "id": {"type": "keyword"},
@@ -134,4 +134,4 @@ async def ingest_dense(
 
     if accelerator.is_local_main_process:
         logger.info("Ingestion complete. Refreshing index...")
-        os_client.indices.refresh(index=index_name)
+        os_client.indices.refresh(index=index_name, params={"timeout": 1000})

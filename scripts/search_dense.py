@@ -26,7 +26,7 @@ async def search_dense(
 
     # Load model
     logger.info(f"Loading SentenceTransformer model for search: {model_id} on {device}")
-    model = SentenceTransformer(model_id, device=device)
+    model = SentenceTransformer(model_id, device=device, trust_remote_code=True)
 
     queries_dataset = KeyValueDataset(queries)
     dataloader = DataLoader(queries_dataset, batch_size=batch_size, shuffle=False)
@@ -37,7 +37,7 @@ async def search_dense(
 
     for ids, texts in tqdm(dataloader):
         # Encode queries
-        embeddings = model.encode(
+        embeddings = model.encode_query(
             texts, batch_size=batch_size, show_progress_bar=False, convert_to_numpy=True
         )
 
@@ -72,7 +72,7 @@ async def search_dense(
 
         # Check if batch_search returned an error
         if isinstance(search_results, dict) and "error" in search_results:
-            logger.error(f"Search failed: {search_results['error']}")
+            logger.error(f"Search failed: {search_results}")
             raise Exception(f"Search failed: {search_results['error']}")
 
         for i, (_id, res) in enumerate(zip(ids, search_results)):
